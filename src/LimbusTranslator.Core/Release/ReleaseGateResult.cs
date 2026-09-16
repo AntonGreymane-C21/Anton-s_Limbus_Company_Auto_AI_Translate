@@ -41,6 +41,12 @@ public sealed class ReleaseGateResult
     /// </summary>
     public int UnexpectedOutputKeyCount { get; init; }
 
+    /// <summary>
+    /// 本轮未取得译文的条目数（第9.0C.5轮）：
+    /// 已保留权威源原文写入 + 标记待人工审核 ⇒ 默认 Warning 级、不阻断。
+    /// </summary>
+    public int UntranslatedEntryCount { get; init; }
+
     /// <summary>结构化原因列表</summary>
     public required IReadOnlyList<ReleaseGateReason> Reasons { get; init; }
 

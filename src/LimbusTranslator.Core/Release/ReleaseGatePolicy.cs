@@ -61,6 +61,13 @@ public sealed class ReleaseGatePolicy
     /// </summary>
     public ReleaseGateStatus UnexpectedOutputKey { get; init; } = ReleaseGateStatus.Blocked;
 
+    /// <summary>
+    /// 本轮未取得译文的条目（第9.0C.5轮，例如批次请求失败）：
+    /// 已由 Merge 保留权威源原文写入并标记待人工审核 ⇒ 默认**不阻断**，只要求人工确认。
+    /// 产品决策依据："尽量多写 + 标记待审"，而不是整份文件报废。
+    /// </summary>
+    public ReleaseGateStatus UntranslatedEntry { get; init; } = ReleaseGateStatus.RequiresConfirmation;
+
     /// <summary>合并两个结论，取更严格的一方。</summary>
     public static ReleaseGateStatus Escalate(ReleaseGateStatus current, ReleaseGateStatus candidate)
         => (int)candidate > (int)current ? candidate : current;

@@ -54,4 +54,10 @@ public static class ReleaseGateReasonKinds
 
     /// <summary>最终 output 里出现、但权威结构里不存在的 Key（第9.0B-P4轮；例如英文残留的旧 Key）</summary>
     public const string UnexpectedOutputKey = "UNEXPECTED_OUTPUT_KEY";
+
+    /// <summary>
+    /// 本轮未取得译文的条目（第9.0C.5轮）：多为批次请求失败。
+    /// 已保留权威源原文写入并标记待人工审核 ⇒ Warning 级、默认 RequiresConfirmation（不阻断结构校验）。
+    /// </summary>
+    public const string UntranslatedEntry = "UNTRANSLATED_ENTRY";
 }

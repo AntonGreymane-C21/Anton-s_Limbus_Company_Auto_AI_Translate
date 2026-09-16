@@ -220,8 +220,9 @@ public class TranslationTraceTests
                         "[错误] API 返回 500 Authorization: Bearer sk-secret"),
                 });
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                provider.TranslateAsync(new[] { MakeEntry() }, CancellationToken.None, "Test.json"));
+            // 第9.0C.5轮语义更新：批级失败不再抛出，而是标记待审 + 保留失败 Trace（取消仍会传播）
+            var failedResults = await provider.TranslateAsync(new[] { MakeEntry() }, CancellationToken.None, "Test.json");
+            Assert.Empty(failedResults);
 
             var entry = Assert.Single(ReadTrace(writer));
             Assert.False(entry.GetProperty("success").GetBoolean());

@@ -116,7 +116,7 @@ public class MergeAndGlossaryTests
     }
 
     [Fact]
-    public void Merge_缺少预期译文时_不应写出部分文件()
+    public void Merge_缺少预期译文时_保留原文写入并记录问题()
     {
         var newEn = MakeTempDir();
         var output = MakeTempDir();
@@ -135,9 +135,10 @@ public class MergeAndGlossaryTests
         var report = new MergeOutputService().MergeAllWithReport(newEn, translations, output, expected);
 
         Assert.False(report.IsComplete);
-        Assert.Empty(report.Files);
+        Assert.Single(report.Files);   // 第9.0C.5轮：缺译条目不再跳过整个文件
         Assert.Contains(report.Issues, issue => issue.Kind == OutputMergeIssueKind.MissingTranslation);
-        Assert.False(File.Exists(Path.Combine(output, "Test.json")));
+        Assert.True(File.Exists(Path.Combine(output, "Test.json")));   // 已写出（缺译字段保留模板原文）
+        Assert.Contains("你好", File.ReadAllText(Path.Combine(output, "Test.json")));
 
         Directory.Delete(newEn, true);
         Directory.Delete(output, true);

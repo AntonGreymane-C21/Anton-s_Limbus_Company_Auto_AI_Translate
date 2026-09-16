@@ -27,6 +27,12 @@ public static class ThinkingPolicyReasons
     /// 依据 <see cref="TranslationModePolicy.ShouldForceThinking"/>，不另立第二套规则。
     /// </summary>
     public const string KoreanCanonical = "KoreanCanonical";
+
+    /// <summary>
+    /// 空响应降级（第9.0C.5轮）：本批在思考开启下失败（典型是"content 为空 / 思考占满 max_tokens"）后，
+    /// 关闭思考重发一次；该原因码进入这一次重试请求的 Trace。
+    /// </summary>
+    public const string EmptyResponseFallback = "EmptyResponseFallback";
 }
 
 /// <summary>单条条目的 Thinking 决策。</summary>

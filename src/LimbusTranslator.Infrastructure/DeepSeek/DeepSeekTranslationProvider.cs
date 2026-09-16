@@ -165,19 +165,27 @@ public sealed class DeepSeekTranslationProvider : ITranslationProvider, IThinkin
         var batchIndex = 0;
         foreach (var group in thinkingGroups)
         {
-            var decisions = group.Decision;
+            var groupDecision = group.Decision;
             var batches = ProviderBatchBuilder.Build(group.Entries, _batchOptions, _log);
 
         foreach (var batch in batches)
         {
             batchIndex++;
             var batchId = $"Batch{batchIndex:000}";
-            var requestId = _cacheServices?.NextRequestId() ?? $"req-local-{batchIndex:D5}";
-            var startedAt = Stopwatch.StartNew();
-
+            // 第9.0C.5轮：本批第一次失败（典型是"空响应 / 思考占满 max_tokens"）时，
+            // 关闭思考**再发一次**；两次都失败 ⇒ 批级隔离（标记待审 + 继续其它批次），
+            // 不再让一份文件的全部条目因为一个批次而报废。
+            var attemptDecisions = BuildBatchAttemptDecisions(groupDecision);
             await _rateLimiter.WaitAsync(cancellationToken);
             try
             {
+                for (var attemptIndex = 0; attemptIndex < attemptDecisions.Count; attemptIndex++)
+                {
+                var attemptDecision = attemptDecisions[attemptIndex];
+                var requestId = _cacheServices?.NextRequestId() ?? $"req-local-{batchIndex:D5}";
+                var startedAt = Stopwatch.StartNew();
+                try
+                {
                 // 1) Placeholder 保护：把“模型实际看到的字段”固定下来（缓存与指纹都以它为准）
                 var protectedMap = new Dictionary<string, PlaceholderProtectedText>(StringComparer.Ordinal);
                 var requestItems = new List<DeepSeekTranslateRequestItem>(batch.Count);
@@ -243,8 +251,8 @@ public sealed class DeepSeekTranslationProvider : ITranslationProvider, IThinkin
                     ResponseFormat = DeepSeekRequestComposer.ResponseFormatType,
                     // 第8.5轮：思考模式真实进入请求，因此同样进入指纹（不手工拼 thinking）
                     // 第8.75轮：指纹使用**本批实际决策**（自适应策略下同一 Stage 可能 ON/OFF 混合）
-                    Thinking = decisions.Enabled,
-                    ReasoningEffort = decisions.Enabled ? decisions.ReasoningEffort : null,
+                    Thinking = attemptDecision.Enabled,
+                    ReasoningEffort = attemptDecision.Enabled ? attemptDecision.ReasoningEffort : null,
                     SystemPrompt = systemPrompt,
                     UserContent = userContent,
                     GlossaryPrompt = glossaryPrompt,
@@ -308,7 +316,7 @@ public sealed class DeepSeekTranslationProvider : ITranslationProvider, IThinkin
                     ? ReplayCached(cached!)
                     : await _client.TranslateBatchWithMetadataAsync(
                         batchId, requestItems, cancellationToken, glossaryPrompt, characterStylePrompt,
-                        new DeepSeekRequestThinking(decisions.Enabled, decisions.Enabled ? decisions.ReasoningEffort : null),
+                        new DeepSeekRequestThinking(attemptDecision.Enabled, attemptDecision.Enabled ? attemptDecision.ReasoningEffort : null),
                         includeModifiedRule,
                         category,
                         _translationMode);
@@ -399,18 +407,33 @@ public sealed class DeepSeekTranslationProvider : ITranslationProvider, IThinkin
                 startedAt.Stop();
                 WriteTrace(
                     stageId, batchId, requestId, requestItems, fingerprint,
-                    decisions, cacheHit, batchResult, startedAt.ElapsedMilliseconds, success: true, failure: null,
+                    attemptDecision, cacheHit, batchResult, startedAt.ElapsedMilliseconds, success: true, failure: null,
                     glossaryTerms: matchedTerms, batchContext: batch);
-            }
-            catch (Exception ex)
-            {
-                startedAt.Stop();
-                WriteTrace(
-                    stageId, batchId, requestId, null, null,
-                    decisions, cacheHit: false, batchResult: null, startedAt.ElapsedMilliseconds,
-                    success: false, failure: ex, fallbackItemCount: batch.Count,
-                    fallbackUnitKeys: batch.Select(e => e.Key.ToString()).ToArray(), batchContext: batch);
-                throw;
+                break;   // 本批成功 ⇒ 不再降级重试
+                }
+                catch (OperationCanceledException)
+                {
+                    // 取消必须传播：不允许被"批级隔离"吞掉
+                    throw;
+                }
+                catch (Exception ex) when (attemptIndex + 1 < attemptDecisions.Count)
+                {
+                    startedAt.Stop();
+                    _log($"[调试] 本批请求失败（{ex.GetType().Name}），关闭思考后重发一次｜{batchId}｜条目 {batch.Count}｜原因：{ex.Message}");
+                }
+                catch (Exception ex)
+                {
+                    startedAt.Stop();
+                    WriteTrace(
+                        stageId, batchId, requestId, null, null,
+                        attemptDecision, cacheHit: false, batchResult: null, startedAt.ElapsedMilliseconds,
+                        success: false, failure: ex, fallbackItemCount: batch.Count,
+                        fallbackUnitKeys: batch.Select(e => e.Key.ToString()).ToArray(), batchContext: batch);
+                    // 第9.0C.5轮：批级隔离 —— 不抛异常，把本批条目标记为待审核后继续其它批次
+                    MarkBatchFailed(batch, ex, batchId);
+                    break;
+                }
+                }
             }
             finally
             {
@@ -420,6 +443,43 @@ public sealed class DeepSeekTranslationProvider : ITranslationProvider, IThinkin
         }
 
         return results;
+    }
+
+    // ───────── 第9.0C.5轮：空响应降级重试 + 批级失败隔离 ─────────
+
+    /// <summary>
+    /// 本批的尝试计划：
+    ///   1. 按本组原本的 Thinking 决策先试一次；
+    ///   2. 若第一次失败 ⇒ 关闭思考再试一次（"思考占满 max_tokens 导致 content 为空"最有效的自救手段）；
+    ///      原本就没开思考时不重复，避免无意义重发。
+    /// </summary>
+    private static IReadOnlyList<ThinkingDecision> BuildBatchAttemptDecisions(ThinkingDecision primary)
+        => primary.Enabled
+            ? new[]
+            {
+                primary,
+                new ThinkingDecision(false, ThinkingPolicyReasons.EmptyResponseFallback),
+            }
+            : new[] { primary };
+
+    /// <summary>
+    /// 批级失败隔离：一个批次彻底失败（含降级重试）时，把该批条目**标记为待人工审核**并保留原因，
+    /// 然后继续其它批次 —— 而不是抛异常让整个 stage（= 整份文件）报废。
+    ///
+    /// 语义：
+    ///   - 不写 TM / request_cache（本轮没有可信译文，不能污染翻译记忆）；
+    ///   - Merge 用模板原文补位并记录"未翻译条目"，ReleaseGate 以"未取得译文（待审）"非阻断提示。
+    /// </summary>
+    private void MarkBatchFailed(IReadOnlyList<DiffEntry> batch, Exception ex, string batchId)
+    {
+        var reason = $"本批翻译失败（{ex.GetType().Name}）：{TranslationTraceWriter.Sanitize(ex.Message)}";
+        foreach (var entry in batch)
+        {
+            entry.NeedsReview = true;
+            entry.ReviewReason = reason;
+        }
+
+        _log($"[错误] 本批翻译失败，已标记 {batch.Count} 条待人工审核并继续其它批次｜{batchId}｜原因：{reason}");
     }
 
     /// <summary>

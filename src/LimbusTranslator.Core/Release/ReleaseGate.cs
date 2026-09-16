@@ -140,6 +140,34 @@ public static class ReleaseGate
             }
         }
 
+        // 第9.0C.5轮（产品决策：尽量多写 + 标记待审）：
+        // 本轮未取得译文的条目（典型为批次请求失败）—— Merge 已保留权威源原文写入，
+        // 这里以 Warning + RequiresConfirmation 记录，**不阻断**结构完整性校验。
+        var untranslatedEntryCount = 0;
+        foreach (var candidate in entries)
+        {
+            if (candidate is null
+                || candidate.Action is not (TranslationAction.TranslateNew
+                    or TranslationAction.TranslateModified
+                    or TranslationAction.TranslateMissing)
+                || !string.IsNullOrWhiteSpace(candidate.Translation))
+            {
+                continue;
+            }
+
+            untranslatedEntryCount++;
+            status = ReleaseGatePolicy.Escalate(status, effective.UntranslatedEntry);
+            AddReason(
+                buckets,
+                "UNTRANSLATED_ENTRY",
+                ReleaseGateReasonKinds.UntranslatedEntry,
+                ValidationSeverity.Warning,
+                candidate.Provenance,
+                effective.UntranslatedEntry,
+                Array.Empty<ValidationIssue>(),
+                candidate);
+        }
+
         var reasons = buckets.Values
             .OrderByDescending(b => (int)b.Escalation)
             .ThenBy(b => b.Kind, StringComparer.Ordinal)
@@ -158,6 +186,7 @@ public static class ReleaseGate
             HistoricalInheritedErrorCount = historicalInheritedErrorCount,
             MissingExpectedKeyCount = missingExpectedKeyCount,
             UnexpectedOutputKeyCount = unexpectedOutputKeyCount,
+            UntranslatedEntryCount = untranslatedEntryCount,
             Reasons = reasons,
         };
     }
@@ -371,6 +400,9 @@ public static class ReleaseGate
                     $"权威输出结构要求的 {Count} 个条目未出现在最终 output 中（{Code}），禁止直接部署。",
                 ReleaseGateReasonKinds.UnexpectedOutputKey =>
                     $"最终 output 出现 {Count} 个权威输出结构中不存在的条目（{Code}；例如英文残留的旧 Key），禁止直接部署。",
+                ReleaseGateReasonKinds.UntranslatedEntry =>
+                    $"本轮有 {Count} 条文本未取得译文（{Code}；多为批次请求失败）：已保留权威源原文写入"
+                    + "并标记为待人工审核；结构完整，但建议审核后再部署。",
                 ReleaseGateReasonKinds.NewTranslationHardError =>
                     $"{scope}存在 {Count} 条{level}（{Code}），禁止直接部署。",
                 _ => $"{scope}存在 {Count} 条{level}（{Code}）。",

@@ -186,10 +186,13 @@ public sealed class MergeOutputService
                 : new List<OutputTranslation>();
             var valueByKey = values.ToDictionary(value => value.Key, StringComparer.Ordinal);
 
-            // 传入预期条目时，禁止只写入一个文件的部分字段。
+            // 传入预期条目时，缺译条目不再拦下整个文件（见下方第9.0C.5轮说明）。
             var missingTargets = expected
                 .Where(target => !valueByKey.ContainsKey(target.Key))
                 .ToList();
+
+            // 第9.0C.5轮（产品决策：尽量多写 + 标记待审）：缺译条目不再「跳过整个文件」，
+            // 而是保留权威源原文写入，并逐条记录 MissingTranslation 供人工审核。
             if (missingTargets.Count > 0)
             {
                 foreach (var missing in missingTargets)
@@ -199,14 +202,12 @@ public sealed class MergeOutputService
                         Kind = OutputMergeIssueKind.MissingTranslation,
                         RelativeFilePath = relativeFilePath,
                         TranslationKey = missing.Key,
-                        Message = "本轮没有该字段的最终译文，已跳过整个文件以避免部分输出。",
+                        Message = "本轮没有该字段的译文：已保留权威源原文写入，并标记为待人工审核。",
                     });
                 }
-
-                continue;
             }
 
-            if (values.Count == 0)
+            if (values.Count == 0 && expected.Count == 0)
             {
                 continue;
             }
@@ -245,7 +246,11 @@ public sealed class MergeOutputService
             outputFiles.Add(relativeFilePath);
             writtenEntries += fileResult.WrittenEntryCount;
             verifiedEntries += fileResult.VerifiedEntryCount;
-            writtenKeys.AddRange(values.Select(value => value.Key));
+            // 第9.0C.5轮：缺译条目已用权威源原文写入该文件 ⇒ 它们同样属于"已写入的 Key"
+            //（ReleaseGate 因此不会把它们误判为结构缺失，而会以 UNTRANSLATED_ENTRY 提示待审）。
+            writtenKeys.AddRange(expected.Count > 0
+                ? expected.Select(target => target.Key)
+                : values.Select(value => value.Key));
         }
 
         return new OutputMergeResult

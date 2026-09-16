@@ -264,14 +264,31 @@ public sealed class CanonicalOutputTests : IDisposable
             oldChinese: null,
             dropTranslationKeys: new[] { EnOnlyKey(3) });
 
-        Assert.Empty(run.Merge.Files);                                        // 整文件不写入
+        Assert.Single(run.Merge.Files);                                       // 第9.0C.5轮：文件仍然写出（保留原文）
         Assert.Contains(run.Merge.Issues, issue => issue.Kind == OutputMergeIssueKind.MissingTranslation);
-        Assert.Equal(run.Plan.ExpectedOutputKeys.Count, run.Gate.MissingExpectedKeyCount);
-        Assert.Equal(ReleaseGateStatus.Blocked, run.Gate.Status);
+        // 第9.0C.5轮（产品决策：尽量多写 + 标记待审）：缺译条目已用权威源原文写入 ⇒ 结构不再缺失，
+        // 改为 UNTRANSLATED_ENTRY 非阻断提示（仍需人工确认）。
+        Assert.Equal(0, run.Gate.MissingExpectedKeyCount);
+        Assert.NotEqual(ReleaseGateStatus.Blocked, run.Gate.Status);
 
-        var reason = run.Gate.Reasons.Single(item => item.Kind == ReleaseGateReasonKinds.MissingExpectedKey);
+        // 第9.0C.5轮：本轮「未取得译文」的条目（真实场景＝批级失败）必须被标记待审且不阻断。
+        var probeEntries = run.Plan.OutputEntries.ToList();
+        probeEntries.First(entry => entry.Key.ToString() == EnOnlyKey(3)).Translation = null;
+        var probeGate = ReleaseGate.Evaluate(
+            probeEntries, null,
+            new ReleaseGateKeySet { ExpectedKeys = run.Plan.ExpectedOutputKeys, OutputKeys = run.Merge.WrittenKeys });
+        Assert.Equal(1, probeGate.UntranslatedEntryCount);
+        Assert.NotEqual(ReleaseGateStatus.Blocked, probeGate.Status);
+        var reason = probeGate.Reasons.Single(item => item.Kind == ReleaseGateReasonKinds.UntranslatedEntry);
         Assert.Contains(reason.Samples, sample => sample.UnitKey == EnOnlyKey(3));
-        Assert.False(File.Exists(Path.Combine(run.OutputRoot, FourModeAgentE2EHarness.LogicalFileName)));
+        Assert.True(File.Exists(Path.Combine(run.OutputRoot, FourModeAgentE2EHarness.LogicalFileName)));
+
+        // 结构缺失仍然必须阻断（单元级：keySet 期望一个未写出的 Key）
+        var structural = ReleaseGate.Evaluate(
+            run.Plan.OutputEntries.Take(1).ToList(), null,
+            new ReleaseGateKeySet { ExpectedKeys = new[] { EnOnlyKey(3) }, OutputKeys = Array.Empty<string>() });
+        Assert.Equal(1, structural.MissingExpectedKeyCount);
+        Assert.Equal(ReleaseGateStatus.Blocked, structural.Status);
     }
 
     // ───────── J：Gate —— output 出现权威结构不存在的 Key ⇒ 必须判非预期 ─────────

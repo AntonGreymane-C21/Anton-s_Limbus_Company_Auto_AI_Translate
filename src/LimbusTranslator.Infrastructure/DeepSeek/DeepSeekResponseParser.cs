@@ -3,6 +3,24 @@ using System.Text.Json;
 namespace LimbusTranslator.Infrastructure.DeepSeek;
 
 /// <summary>
+/// API 返回了"空内容"（空响应体，或 <c>choices[0].message.content</c> 为空）时抛出（第9.0C.5轮）。
+///
+/// 真实案例：kr_en + 思考(always_on/high) + 20 条剧情批次，请求耗时约 36 秒后失败，
+/// 重试 6 次全部失败（总 279 秒）——最可能的原因是**思考用满 max_tokens 导致正文为空**，
+/// 或网关在长耗时后返回空体。旧实现只抛 System.Text.Json 的英文异常（"does not contain any
+/// JSON tokens"），用户完全看不出发生了什么，因此单独给一个可读、可识别的异常类型：
+///   - 日志 / 失败 Trace 里能一眼看出是"空响应"；
+///   - Provider 据此触发"关闭思考的降级重试一次"。
+/// </summary>
+public sealed class DeepSeekEmptyResponseException : JsonException
+{
+    public DeepSeekEmptyResponseException(string message)
+        : base(message)
+    {
+    }
+}
+
+/// <summary>
 /// DeepSeek（OpenAI 兼容）响应解析与 ID 集合校验。
 ///
 /// 职责边界（第2轮）：只处理协议层 —— JSON 结构、id 集合（Missing / Extra / Duplicate）。
@@ -31,6 +49,13 @@ public static class DeepSeekResponseParser
             string content,
             IReadOnlyList<DeepSeekTranslateRequestItem> requestItems)
     {
+        // 第9.0C.5轮：空响应 / 空 content 必须给出可读中文原因（旧实现只抛英文 JSON 解析异常）
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            throw new DeepSeekEmptyResponseException(
+                "[错误] API 返回空响应体（可能是网关截断或服务端未返回内容）；建议降低思考强度或缩小批次后重试。");
+        }
+
         using var doc = JsonDocument.Parse(content);
         var root = doc.RootElement;
         var metadata = ReadMetadata(root);
@@ -45,6 +70,12 @@ public static class DeepSeekResponseParser
         }
 
         var inner = messageContent.GetString() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(inner))
+        {
+            throw new DeepSeekEmptyResponseException(
+                "[错误] API 响应 content 为空（常见原因：思考占满 max_tokens 导致没有正文）；建议关闭思考或增大 max_tokens 后重试。");
+        }
+
         using var innerDoc = JsonDocument.Parse(inner);
 
         if (!innerDoc.RootElement.TryGetProperty("items", out var resultItems)
