@@ -368,7 +368,15 @@ public sealed class ProductionOrderAlignmentTests
 
         // ① 唯一生产层（Build / TryCapture）必须存在：WPF 通过后台分析服务调用，CLI 直接调用
         Assert.Contains("ProductionTranslationPlanBuilder.Build(", wpf);
-        Assert.Contains("ProductionTranslationPlanBuilder.IsTranslationRequired", wpf);
+        // 第9.0C.3轮：动作谓词仍然只有一份实现；WPF 通过「任务选择层」消费它，CLI 直接使用。
+        var wpfTaskSelection = File.ReadAllText(Path.Combine(
+            root, "src", "LimbusTranslator.Wpf", "ViewModels", "MainViewModel.TaskSelection.cs"));
+        var taskSelectionCore = File.ReadAllText(Path.Combine(
+            root, "src", "LimbusTranslator.Infrastructure", "Presentation", "TaskSelection.cs"));
+        Assert.Contains("ProductionTranslationPlanBuilder.IsTranslationRequired", taskSelectionCore);
+        Assert.Contains("TaskSelection.Resolve(", wpfTaskSelection);
+        Assert.Contains("TaskSelection.BuildSummaries(", wpfTaskSelection);
+        Assert.Contains("ResolveTaskSelection(", wpf);
         Assert.Contains("ProductionAnalyzeService", wpf + wpfGui);              // WPF 分析入口 = 后台服务
         Assert.Contains("ProductionTranslationPlanBuilder.Build(", analyzeService);
         Assert.Contains("ProductionTranslationPlanBuilder.TryCapture(", analyzeService);

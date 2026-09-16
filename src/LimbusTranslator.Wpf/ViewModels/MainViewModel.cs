@@ -552,6 +552,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         }
 
         Log($"[调试] 分类统计: {string.Join(", ", CategoryStats.Select(c => $"{c.DisplayName}(总{c.TotalFileCount}/需译{c.NeedTranslateFileCount})"))}");
+
+        // 第9.0C.3轮：分类（任务范围）勾选变化后立即联动文件列表。
+        // 回调在统计构建完成后再挂上，避免构建过程中反复触发过滤。
+        foreach (var stat in CategoryStats)
+        {
+            stat.SelectionChanged = OnTaskScopeChanged;
+        }
     }
 
     /// <summary>
@@ -577,11 +584,23 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        // 第9.0C.3轮：批量修改时先摘掉回调，最后统一联动一次（避免逐分类反复过滤文件列表）。
+        foreach (var c in CategoryStats)
+        {
+            c.SelectionChanged = null;
+        }
+
         foreach (var c in CategoryStats)
         {
             c.IsSelected = true;
         }
 
+        foreach (var c in CategoryStats)
+        {
+            c.SelectionChanged = OnTaskScopeChanged;
+        }
+
+        ApplyTaskScopeFilter(log: true);
         StatusText = $"已全选 {CategoryStats.Count} 个分类";
         Log($"[调试] 已全选任务范围中的 {CategoryStats.Count} 个分类。");
     }
@@ -598,11 +617,23 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        // 第9.0C.3轮：批量修改时先摘掉回调，最后统一联动一次（避免逐分类反复过滤文件列表）。
+        foreach (var c in CategoryStats)
+        {
+            c.SelectionChanged = null;
+        }
+
         foreach (var c in CategoryStats)
         {
             c.IsSelected = false;
         }
 
+        foreach (var c in CategoryStats)
+        {
+            c.SelectionChanged = OnTaskScopeChanged;
+        }
+
+        ApplyTaskScopeFilter(log: true);
         StatusText = "已清空任务范围分类";
         Log("[调试] 已清空任务范围中的所有分类。");
     }
@@ -838,8 +869,18 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                 Log("[调试] 未获得本次分析的三语捕获结果：四模式接线已跳过（KR 模式将退回纯源文语义）。");
             }
 
-            // 按用户勾选的分类过滤（分类过滤发生在接线之后：统计 / 调度 / 输出使用同一份最终动作集合）
-            var toTranslate = FilterBySelectedCategories(plan.NeedTranslate);
+            // 第9.0C.3轮：任务范围（分类）∩ 用户文件勾选 → SelectedNeedTranslate（唯一数据源）
+            RefreshFileTasks(plan);
+            var taskSelection = ResolveTaskSelection(plan);
+            if (taskSelection is null)
+            {
+                StatusText = "任务选择不可用，请先执行 Diff 分析";
+                CompleteProgress("任务选择不可用");
+                return;
+            }
+
+            var toTranslate = taskSelection.SelectedEntries.ToList();
+            LogTaskSelection(taskSelection);
 
             // 第8.8轮：直通 / 真正需要 AI 统计（复用既有分类器）
             ApplyDiffStatistics(toTranslate);
@@ -850,9 +891,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
             if (toTranslate.Count == 0)
             {
-                Log("[调试] 所选分类中没有需要翻译的新内容。");
-                StatusText = "所选分类无需翻译";
-                CompleteProgress("所选分类无需翻译");
+                Log("[调试] 所选任务范围 / 文件选择中没有需要翻译的新内容。");
+                StatusText = FileTasks.Count > 0 && !HasSelectedFiles
+                    ? "请至少选择一个需要处理的文件。"
+                    : "所选范围无需翻译";
+                CompleteProgress(StatusText);
                 return;
             }
 
@@ -896,12 +939,10 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                     Log($"[调试]   失败 Stage: {failed.StageId} - {failed.Error}");
                 }
 
-                // 4) 合并译文（仅选中分类涉及的条目）
+                // 4) 合并译文（仅本轮选中的任务范围 / 文件）
                 //    第9.0B-P4轮：条目集合来自生产计划的 output 条目（EN_ONLY → 英文 Key 集；KR 三模式 → 韩文 Key 集）
-                var selectedCategories = CategoryStats.Where(c => c.IsSelected).Select(c => c.Category).ToHashSet();
-                var selectedEntries = plan.OutputEntries
-                    .Where(e => selectedCategories.Contains(TextCategoryHelper.FromRelativePath(e.Key.RelativeFilePath)))
-                    .ToList();
+                //    第9.0C.3轮：Merge 与 ReleaseGate 的权威 Key 集同样来自任务选择（同一份，未选文件不会进本次 output）
+                var selectedEntries = taskSelection.SelectedOutputEntries.ToList();
                 var finalTranslations = Coordinator.CollectTranslations(selectedEntries);
 
                 // 填充待审核列表（仅选中分类）
@@ -936,6 +977,15 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                 StatusText = isComplete
                     ? $"翻译完成并已核验输出: {outputResult.WrittenFileCount} 个文件"
                     : $"翻译完成但输出不完整: 已核验 {outputResult.WrittenFileCount}/{outputResult.RequestedFileCount} 个文件";
+
+                // 第9.0C.3轮：明确告知"本轮暂不处理"的范围（避免用户误以为系统漏翻）
+                if (taskSelection.IsPartial)
+                {
+                    var partialNote = $"另有 {taskSelection.UnselectedFileCount} 个文件 / {taskSelection.UnselectedUnitCount} 条被你设置为「本轮暂不处理」";
+                    Log($"[调试] {partialNote}（本轮为部分任务输出，未选文件保持既有汉化不变）");
+                    StatusText = $"{StatusText}｜{partialNote}";
+                }
+
                 CompleteProgress(isComplete ? "翻译与输出核验完成" : "翻译完成，输出待处理");
             }
             finally
@@ -1601,35 +1651,36 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            var selectedCategories = CategoryStats.Where(c => c.IsSelected).Select(c => c.Category).ToHashSet();
-            if (selectedCategories.Count == 0)
+            if (_lastPlan is null)
             {
-                Log("[调试] 没有选中的分类，请先执行 Diff 分析并勾选需要扫描的分类。");
-                IncrementalTermStatus = "没有选中的分类";
+                Log("[调试] 尚未完成 Diff 分析，无法确定提取范围（请先点击「分析更新」）。");
+                IncrementalTermStatus = "请先执行 Diff 分析";
                 return;
             }
 
             IsBusy = true;
             IncrementalTermStatus = "扫描中...";
-            BeginProgress("增量术语扫描", "准备分析待翻译字段");
-            var oldEnglishDir = OldEnglishDir;
-            var oldChineseDir = OldChineseDir;
-            var newEnglishDir = NewEnglishDir;
+            BeginProgress("增量术语扫描", "读取当前任务选择");
 
             // 只扫描实际需要翻译的字段，不能把 JSON 元数据、文件名或其他非翻译字符串混入术语候选。
             var scan = await Task.Run(() =>
             {
-                SetProgressStage("分析待翻译字段");
-                var diffResult = _service.Analyze(oldEnglishDir, oldChineseDir, newEnglishDir, null);
-                var entriesToScan = diffResult.Entries
-                    .Where(ProductionTranslationPlanBuilder.IsTranslationRequired)
-                    .Where(entry => selectedCategories.Contains(TextCategoryHelper.FromRelativePath(entry.Key.RelativeFilePath)))
+                SetProgressStage("读取当前任务选择");
+                // 第9.0C.3轮：提取与"开始汉化"必须使用**同一份**任务选择（同一计划 + 同一文件勾选），
+                // 不再单独重新 Analyze（否则会出现「UI 勾 5 个、提取 100 个」的错位）。
+                var currentSelection = ResolveTaskSelection();
+                if (currentSelection is null)
+                {
+                    return (EntryCount: 0, Candidates: (IReadOnlyList<TermScanCandidate>)Array.Empty<TermScanCandidate>(), NoPlan: true);
+                }
+
+                var entriesToScan = currentSelection.SelectedEntries
                     .Where(entry => !string.IsNullOrWhiteSpace(entry.NewSourceText))
                     .ToList();
 
                 if (entriesToScan.Count == 0)
                 {
-                    return (EntryCount: 0, Candidates: (IReadOnlyList<TermScanCandidate>)Array.Empty<TermScanCandidate>());
+                    return (EntryCount: 0, Candidates: (IReadOnlyList<TermScanCandidate>)Array.Empty<TermScanCandidate>(), NoPlan: false);
                 }
 
                 SetProgressStage("筛选需要解释的专名与固定术语");
@@ -1641,8 +1692,16 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                     glossary.Entries,
                     minOccurrence: 2,
                     excludedTerms: characterStyles.Styles.Keys);
-                return (EntryCount: entriesToScan.Count, Candidates: candidates);
+                return (EntryCount: entriesToScan.Count, Candidates: candidates, NoPlan: false);
             });
+
+            if (scan.NoPlan)
+            {
+                Log("[调试] 尚未完成 Diff 分析，无法确定提取范围。");
+                IncrementalTermStatus = "请先执行 Diff 分析";
+                CompleteProgress("请先执行 Diff 分析");
+                return;
+            }
 
             if (scan.EntryCount == 0)
             {

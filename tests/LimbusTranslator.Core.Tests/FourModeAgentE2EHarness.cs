@@ -323,7 +323,8 @@ internal sealed class FourModeAgentE2EHarness : IDisposable
         Func<TranslationCacheServices, ITranslationProvider> providerFactory,
         IReadOnlyList<string>? oldEnglish = null,
         IReadOnlyList<string>? newEnglish = null,
-        ActiveGlossarySnapshot? glossarySnapshot = null)
+        ActiveGlossarySnapshot? glossarySnapshot = null,
+        IReadOnlyList<DiffEntry>? entryOverride = null)
     {
         var current = newEnglish ?? CurrentTextsOf(SourceLanguage.English) ?? Array.Empty<string>();
         var entries = BuildEnglishCandidates(
@@ -350,7 +351,11 @@ internal sealed class FourModeAgentE2EHarness : IDisposable
             log: Log,
             cacheServices: services);
 
-        var result = await coordinator.ExecuteAsync(plan.NeedTranslate);
+        // 第9.0C.3轮：允许调用方传入「本轮任务选择」的结果（未选择时不传任何条目 ⇒ Provider 不会被调用）
+        var agentEntries = entryOverride ?? plan.NeedTranslate;
+        var result = agentEntries.Count == 0
+            ? new CoordinatorResult { Agents = Array.Empty<AgentExecutionResult>() }
+            : await coordinator.ExecuteAsync(agentEntries);
 
         return new AgentE2ERun(mode, plan, capture, result, ReadTrace(trace));
     }

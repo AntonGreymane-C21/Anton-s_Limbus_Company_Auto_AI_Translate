@@ -228,6 +228,15 @@ public partial class MainWindow : Window
     private void DeselectAllCategories_Click(object sender, RoutedEventArgs e)
         => _viewModel.DeselectAllCategories();
 
+    private void SelectAllFiles_Click(object sender, RoutedEventArgs e)
+        => _viewModel.SelectAllVisibleFiles();
+
+    private void SelectNoneFiles_Click(object sender, RoutedEventArgs e)
+        => _viewModel.SelectNoneVisibleFiles();
+
+    private void InvertFiles_Click(object sender, RoutedEventArgs e)
+        => _viewModel.InvertVisibleFiles();
+
     private void ScanTerms_Click(object sender, RoutedEventArgs e)
         => _viewModel.ScanIncrementalTerms();
 

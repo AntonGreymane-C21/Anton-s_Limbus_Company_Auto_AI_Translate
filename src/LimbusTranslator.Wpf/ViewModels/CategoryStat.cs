@@ -39,8 +39,14 @@ public sealed class CategoryStat : INotifyPropertyChanged
 
             _isSelected = value;
             OnPropertyChanged();
+            SelectionChanged?.Invoke();
         }
     }
+
+    /// <summary>
+    /// 第9.0C.3轮：勾选变化回调（由 ViewModel 挂载；用于「任务范围 → 文件列表」即时联动）。
+    /// </summary>
+    public Action? SelectionChanged { get; set; }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

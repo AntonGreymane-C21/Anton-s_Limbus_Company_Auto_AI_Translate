@@ -108,7 +108,7 @@ public sealed partial class MainViewModel
 
     public bool CanAnalyzeAction => _workflow.CanAnalyze;
 
-    public bool CanTranslateAction => _workflow.CanTranslate;
+    public bool CanTranslateAction => _workflow.CanTranslate && HasSelectedFiles;
 
     public bool CanGenerateOutputAction => _workflow.CanGenerateOutput;
 
@@ -650,6 +650,8 @@ public sealed partial class MainViewModel
     /// </summary>
     internal void ApplyAnalyzeResult(ProductionAnalyzeResult result)
     {
+        // 第9.0C.3轮：把任务文件列表构建收口在同一个 partial 里（内存过滤，不重新扫描游戏目录）。
+        RefreshFileTasksFromAnalysis(result);
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var fileResult = result.FileResult;
 
