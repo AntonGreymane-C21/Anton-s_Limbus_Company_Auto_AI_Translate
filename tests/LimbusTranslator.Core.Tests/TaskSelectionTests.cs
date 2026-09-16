@@ -380,3 +380,67 @@ public sealed class TaskSelectionProviderE2ETests : IDisposable
         Assert.All(plan.NeedTranslate, entry => Assert.NotEqual(TranslationAction.SkipDeleted, entry.Action));
     }
 }
+
+/// <summary>
+/// 第9.0C.6轮：任务选择的**统计口径**回归 —— 「选中文件（需要 AI）」与「输出将写出的文件数」必须分开。
+///
+/// 真实困惑来源：用户只勾了 1 个文件，日志却写「选中文件 908」——因为旧口径把"范围内所有文件"
+/// （含 895 个无需 AI、沿用既有译文的文件）也算成了"选中"。两者现在分开表达。
+/// </summary>
+public sealed class TaskSelectionCountingTests
+{
+    private static DiffEntry Entry(string file, string recordId, TranslationAction action)
+        => new()
+        {
+            Key = new UnitKey { RelativeFilePath = file, RecordId = recordId, FieldPath = "dataList[0].content" },
+            NewSourceText = $"text-{recordId}",
+            DiffKind = DiffKind.Modified,
+            Action = action,
+        };
+
+    [Fact]
+    public void 统计口径_选中文件只算需要AI的文件_输出文件数单列()
+    {
+        var entries = new List<DiffEntry>
+        {
+            Entry("StoryData/Big1.json", "1", TranslationAction.TranslateModified),
+            Entry("StoryData/Big2.json", "2", TranslationAction.TranslateMissing),
+        };
+        for (var i = 0; i < 5; i++)
+        {
+            entries.Add(Entry($"StoryData/Inherit{i}.json", $"R{i}", TranslationAction.Inherit));
+        }
+
+        var plan = new ProductionTranslationPlan
+        {
+            Mode = TranslationMode.KoreanEnglish,
+            Candidates = entries,
+            NeedTranslate = entries.Where(entry => entry.Action != TranslationAction.Inherit).ToList(),
+            OutputEntries = entries,
+            ExpectedOutputKeys = entries.Select(entry => entry.Key.ToString()).ToList(),
+            AuthoritativeLanguage = SourceLanguage.Korean,
+            AuthoritativeDirectory = "kr",
+            IsKoreanAuthoritative = true,
+            PatchedCount = 0,
+            InheritedKeptCount = 0,
+            KoreanOnlyCount = 0,
+            HasCanonicalCapture = true,
+        };
+
+        var selection = new FileSelectionState();
+        selection.Set("StoryData/Big2.json", false);   // 只处理 Big1
+
+        var result = TaskSelection.Resolve(plan, new HashSet<TextCategory> { TextCategory.StoryData }, selection);
+
+        // ① 与 GUI「需要处理的文件」同口径：只有 1 个需要 AI 的文件被选中（不是 6 个）
+        Assert.Equal(new[] { "StoryData/Big1.json" }, result.SelectedFiles);
+        // ② 输出将写出：Big1 + 5 个无需 AI 的文件（Big2 未选 ⇒ 不写出）
+        Assert.Equal(6, result.SelectedOutputFileCount);
+        Assert.Single(result.SelectedEntries);
+        Assert.Equal(2, result.TotalFileCount);
+        Assert.Equal(1, result.UnselectedFileCount);
+        Assert.Equal(1, result.UnselectedUnitCount);
+        Assert.Contains("输出将写出 6 个文件", result.Describe());
+    }
+}
+

@@ -116,7 +116,16 @@ public sealed class FileSelectionState
 public sealed record TaskSelectionResult(
     IReadOnlyList<DiffEntry> SelectedEntries,
     IReadOnlyList<DiffEntry> SelectedOutputEntries,
+    /// <summary>
+    /// 本轮处理、且**真正需要 AI** 的逻辑文件（与 GUI「需要处理的文件」列表同口径）。
+    /// 注意：不含"无需 AI（可继承旧中文）"的文件 —— 那些文件不需要用户勾选。
+    /// </summary>
     IReadOnlyList<string> SelectedFiles,
+    /// <summary>
+    /// 本轮 Merge / ReleaseGate 将写出的**文件数量**（含无需 AI 的文件）。
+    /// 它通常远大于 <see cref="SelectedFiles"/>（真实数据：选 1 个需译文件 ⇒ 输出 908 个文件）。
+    /// </summary>
+    int SelectedOutputFileCount,
     IReadOnlyList<string> VisibleFiles,
     int VisibleNeedTranslateUnitCount,
     int UnselectedFileCount,
@@ -133,7 +142,8 @@ public sealed record TaskSelectionResult(
 
     /// <summary>一句话摘要（状态栏 / 日志 / ReleaseGate 提示用）。</summary>
     public string Describe()
-        => $"选中文件 {SelectedFiles.Count}/{TotalFileCount}，本轮待翻译 {SelectedEntries.Count} 条"
+        => $"本轮处理文件 {SelectedFiles.Count}（需要 AI），待翻译 {SelectedEntries.Count} 条"
+           + $"；输出将写出 {SelectedOutputFileCount} 个文件"
            + (IsPartial ? $"；本轮暂不处理 {UnselectedFileCount} 个文件 / {UnselectedUnitCount} 条" : string.Empty);
 }
 
@@ -244,7 +254,16 @@ public static class TaskSelection
         return new TaskSelectionResult(
             SelectedEntries: selectedEntries,
             SelectedOutputEntries: selectedOutput,
-            SelectedFiles: selectedVisibleFiles.OrderBy(file => file, StringComparer.Ordinal).ToList(),
+            // 第9.0C.6轮：与 GUI「需要处理的文件」同口径 —— 只算需要 AI 的文件
+            SelectedFiles: visible
+                .Where(summary => summary.RequiresAi && selection.IsSelected(summary.LogicalFile))
+                .Select(summary => summary.LogicalFile)
+                .OrderBy(file => file, StringComparer.Ordinal)
+                .ToList(),
+            SelectedOutputFileCount: selectedOutput
+                .Select(entry => entry.Key.RelativeFilePath)
+                .Distinct(StringComparer.Ordinal)
+                .Count(),
             VisibleFiles: visible.Select(summary => summary.LogicalFile).OrderBy(file => file, StringComparer.Ordinal).ToList(),
             VisibleNeedTranslateUnitCount: visible.Sum(summary => summary.NeedTranslateCount),
             UnselectedFileCount: unselectedFiles.Count,

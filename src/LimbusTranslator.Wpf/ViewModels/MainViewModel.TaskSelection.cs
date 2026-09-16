@@ -161,9 +161,13 @@ public sealed partial class MainViewModel
         var skippedUnits = skipped.Sum(row => row.NeedTranslateCount);
         var selectedUnits = selected.Sum(row => row.NeedTranslateCount);
 
+        // 第9.0C.6轮：明确区分「需要 AI 的文件数」与「输出将写出的文件数」
+        var outputFiles = ResolveTaskSelection()?.SelectedOutputFileCount;
+
         FileSelectionSummaryText =
             $"已选择 {selected.Count} / {FileTasks.Count} 个文件\n"
             + $"本轮将翻译 {selectedUnits} 条"
+            + (outputFiles is null ? string.Empty : $"\n输出将写出 {outputFiles} 个文件（含无需 AI、沿用既有译文的文件）")
             + (skipped.Count > 0 ? $"\n本轮暂不处理：{skipped.Count} 个文件 / {skippedUnits} 条" : string.Empty);
 
         OnPropertyChanged(nameof(HasSelectedFiles));
@@ -238,7 +242,11 @@ public sealed partial class MainViewModel
     /// <summary>翻译开始前的选择日志（不刷每行 Checkbox）。</summary>
     private void LogTaskSelection(TaskSelectionResult selection)
     {
-        Log($"[调试] 开始翻译：选中文件 {selection.SelectedFiles.Count}，待翻译条目 {selection.SelectedEntries.Count}");
+        // 第9.0C.6轮：两件事必须分开说清楚 ——
+        //   ① 用户勾选的、真正需要 AI 的文件数（与 GUI 一致）
+        //   ② Merge/ReleaseGate 实际会写出多少文件（含"无需 AI、沿用既有译文"的文件，通常远大于 ①）
+        Log($"[调试] 开始翻译：本轮处理文件 {selection.SelectedFiles.Count}（需要 AI），待翻译条目 {selection.SelectedEntries.Count}"
+            + $"；输出将写出 {selection.SelectedOutputFileCount} 个文件");
         if (selection.IsPartial)
         {
             Log($"[调试] 用户本轮暂不处理：文件 {selection.UnselectedFileCount}，条目 {selection.UnselectedUnitCount}");

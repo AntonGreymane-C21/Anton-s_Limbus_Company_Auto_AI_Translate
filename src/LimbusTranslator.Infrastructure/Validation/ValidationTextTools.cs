@@ -10,9 +10,30 @@ namespace LimbusTranslator.Infrastructure.Validation;
 /// </summary>
 internal static class ValidationTextTools
 {
-    /// <summary>富文本标签（含属性与自闭合）</summary>
+    // ───────── 第9.0C.6轮：标签形态收严（修 TAG_MISMATCH 假报警） ─────────
+    //
+    // 真实富文本标签只允许这些形态：
+    //   <i> </i> <b> </b> <ruby=chariot> </ruby> <color=#ffffa1> <size=80%> <sprite=... />
+    // 即：名字 + 可选「=值」 + 可选的「键=值」属性对（**每个空格分隔的属性都必须含 `=`**）。
+    //
+    // 为什么必须收严：Limbus 剧情文本用**同一套尖括号**包裹台词强调，例如
+    //   <I hereby confirm today's close of business for the Sinners.> / <araya …?> / <the …> / <that …>
+    // 旧规则把它们当标签，抽出标签名 "i" / "araya" / "the" / "that"，
+    // 于是每次真实翻译都被判 TAG_MISMATCH（硬错误 ⇒ 发布门禁 Blocked），
+    // 历史继承旧中文也由此累计出 2766 条假报警（缺失 the×1 / that×1）。
+    private const string TagShape =
+        "[A-Za-z][A-Za-z0-9_\\-]*(\\s*=\\s*(\"[^\"<>]*\"|[^\\s<>]+))?(\\s+[A-Za-z][A-Za-z0-9_\\-]*\\s*=\\s*(\"[^\"<>]*\"|[^\\s<>]+))*";
+
+    /// <summary>富文本标签（含属性与自闭合）—— 形态受 <see cref="TagShape"/> 约束</summary>
     private static readonly Regex TagRegex = new(
-        @"</?\s*[A-Za-z][A-Za-z0-9_\-]*(?:\s[^<>]*)?/?>", RegexOptions.Compiled);
+        $@"</?\s*{TagShape}\s*/?>", RegexOptions.Compiled);
+
+    /// <summary>
+    /// 任意尖括号片段：**只**用于「可见文本」剥离（英文残留 / 数字分析），
+    /// **不**参与标签结构比较 —— 否则台词包裹 <I hereby …> 又会被当标签。
+    /// </summary>
+    private static readonly Regex AnyBracketRegex = new(
+        @"</?[^<>]{1,80}>", RegexOptions.Compiled);
 
     /// <summary>标签名（忽略属性差异）</summary>
     private static readonly Regex TagNameRegex = new(
@@ -37,7 +58,7 @@ internal static class ValidationTextTools
     internal static string ToVisibleText(string? text)
     {
         var withoutMarkers = RemoveMarkers(text);
-        return withoutMarkers.Length == 0 ? string.Empty : TagRegex.Replace(withoutMarkers, " ");
+        return withoutMarkers.Length == 0 ? string.Empty : AnyBracketRegex.Replace(withoutMarkers, " ");
     }
 
     /// <summary>提取标签名（小写，忽略属性；重复出现即计入多次）</summary>
@@ -50,10 +71,17 @@ internal static class ValidationTextTools
             return result;
         }
 
-        foreach (Match m in TagNameRegex.Matches(source))
+        // 第9.0C.6轮：名字只从**已确认为标签**的片段里取（不再对全文扫标签名正则）；
+        // 台词包裹 <I hereby …> 因此不会被误抽成标签名 "i"。
+        foreach (Match m in TagRegex.Matches(source))
         {
-            result.Add(m.Groups[1].Value.ToLowerInvariant());
+            var named = TagNameRegex.Match(m.Value);
+            if (named.Success)
+            {
+                result.Add(named.Groups[1].Value.ToLowerInvariant());
+            }
         }
+
         return result;
     }
 
