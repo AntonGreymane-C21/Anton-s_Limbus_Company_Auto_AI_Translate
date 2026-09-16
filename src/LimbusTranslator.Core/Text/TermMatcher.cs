@@ -84,9 +84,25 @@ public static partial class TermMatcher
         return pattern.IsMatch(text);
     }
 
+    /// <summary>
+    /// 英文术语的**受控词形后缀**（第9.0C.4轮）。
+    ///
+    /// 背景（真实缺陷）：术语库写 <c>Nursefather</c>，原文写 <c>Nursefathers</c>（英文复数），
+    /// 旧规则 <c>(?&lt;![A-Za-z0-9])term(?![A-Za-z0-9])</c> 会因"后面还有字母"而**完全不命中**：
+    ///   → MatchedTerms 为空 → Prompt 没有该 Locked 术语 → Validator 也看不到它 → 自动修正自然不触发。
+    ///
+    /// 本轮**不做通用 stemming**（游戏里大量自造词 / 角色名 / 组织名，通用词干算法极易误匹配），
+    /// 只放开四种可证明安全的英语词形变化：复数 s / 保守的 es / 所有格 's / 复数所有格 s'。
+    ///
+    /// 安全性来自**右边界依旧禁止字母数字**：
+    ///   <c>Mark</c> 命中 <c>Mark</c> / <c>Marks</c> / <c>Mark's</c> / <c>Marks'</c>，
+    ///   但 <c>Marked</c>（ed）/ <c>Marker</c>（er）/ <c>Market</c>（et）/ <c>Landmark</c>（左边界是字母）全部不命中。
+    /// </summary>
+    private const string EnglishInflectionSuffix = "(?:s|es|'s|s')?";
+
     private static Regex BuildEnglishPattern(string term)
         => new(
-            $"(?<![A-Za-z0-9]){Regex.Escape(term)}(?![A-Za-z0-9])",
+            $"(?<![A-Za-z0-9]){Regex.Escape(term)}{EnglishInflectionSuffix}(?![A-Za-z0-9])",
             MatchOptions | RegexOptions.Compiled);
 
     private static bool ContainsHangulTerm(string text, string term)
@@ -122,7 +138,16 @@ public static partial class TermMatcher
 /// <param name="Start">在源文本中的起始位置</param>
 /// <param name="Length">匹配长度</param>
 /// <param name="Locked">是否为强制术语</param>
-public sealed record TermMatch(string Term, string Translation, int Start, int Length, bool Locked);
+public sealed record TermMatch(string Term, string Translation, int Start, int Length, bool Locked)
+{
+    /// <summary>
+    /// 第9.0C.4轮（诊断用）：文本里**实际命中的表面形式**。
+    ///
+    /// 例：术语为 <c>Nursefather</c>、原文为 <c>Nursefathers</c> ⇒ 本属性 = <c>Nursefathers</c>。
+    /// 不参与任何业务判定、不进入请求指纹 / 缓存 / 序列化，只用于排查"术语到底命中了哪个词形"。
+    /// </summary>
+    public string? MatchedSurface { get; init; }
+}
 
 /// <summary>
 /// 术语匹配器（第8.875轮：词边界；第8.88轮：重叠消解 Longest Match Wins）。
@@ -157,11 +182,14 @@ public static partial class TermMatcher
 
             if (kind == TermKind.English)
             {
-                // 英文：词边界；可能多处出现，全部收集（位置用于重叠消解）
+                // 英文：词边界 + 受控词形（复数 / 所有格）；可能多处出现，全部收集（位置用于重叠消解）
                 var regex = PatternCache.GetOrAdd(value, BuildEnglishPattern);
                 foreach (System.Text.RegularExpressions.Match m in regex.Matches(text))
                 {
-                    result.Add(new TermMatch(value, translation, m.Index, m.Length, locked));
+                    result.Add(new TermMatch(value, translation, m.Index, m.Length, locked)
+                    {
+                        MatchedSurface = m.Value,
+                    });
                 }
             }
             else if (kind == TermKind.Hangul)

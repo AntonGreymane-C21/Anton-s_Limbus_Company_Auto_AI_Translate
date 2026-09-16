@@ -60,7 +60,11 @@ public sealed class TermMatcherAndSnapshotTests : IDisposable
     [InlineData("Don Quixotee attacks", "Don Quixote", false)]
     [InlineData("Move-in Reg. complete", "Move-in Reg.", true)]
     [InlineData("Takeoff Module equipped", "Takeoff Module", true)]
-    [InlineData("Takeoff Modules equipped", "Takeoff Module", false)]
+    // 第9.0C.4轮语义更新：英文术语现在允许「受控词形」（复数 s / 保守 es / 所有格 's / 复数所有格 s'），
+    // 因此 "Takeoff Modules" 属于合法词形，必须命中（旧预期 False 已被"术语库只维护基础形式"的新需求取代）。
+    [InlineData("Takeoff Modules equipped", "Takeoff Module", true)]
+    // 但派生词 / 词内仍然不命中：右边界禁止字母数字 ⇒ 不允许 term + "ing" 之类的自由扩张
+    [InlineData("Takeoff Moduling equipped", "Takeoff Module", false)]
     public void 带标点或空格的术语_必须整体匹配(string text, string term, bool expected)
         => Assert.Equal(expected, TermMatcher.ContainsTerm(text, term));
 

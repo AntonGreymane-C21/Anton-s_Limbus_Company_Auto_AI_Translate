@@ -22,7 +22,7 @@
                 </Border>
                 <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
                     <TextBlock Text="配置中心" Foreground="White" FontSize="18" FontWeight="SemiBold"/>
-                    <TextBlock Text="保存后立即用于下一次翻译；不会修改你的历史备份文件。" Foreground="#AEBBD0" FontSize="12" Margin="0,3,0,0"/>
+                    <TextBlock Text="保存后会立即生效：下一次「开始汉化」会在翻译前重新匹配术语（无需重新分析）；不会修改你的历史备份文件。" Foreground="#AEBBD0" FontSize="12" Margin="0,3,0,0"/>
                 </StackPanel>
             </Grid>
         </Border>

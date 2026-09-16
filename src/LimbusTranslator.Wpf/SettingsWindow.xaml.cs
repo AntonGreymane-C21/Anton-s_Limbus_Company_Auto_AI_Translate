@@ -203,7 +203,7 @@ public partial class SettingsWindow : Window
 
             _glossary.Save();
 
-            var message = "术语库已保存，下次翻译立即生效。";
+            var message = "术语库已更新，将在下一次翻译前重新匹配当前任务（无需重新分析）。";
             if (skipped.Count > 0)
             {
                 message += $"\n\n以下 {skipped.Count} 条因译名为空未写入（请补全译名后重新保存）：\n"
