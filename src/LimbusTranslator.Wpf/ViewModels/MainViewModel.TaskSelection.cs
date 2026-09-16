@@ -67,7 +67,15 @@ public sealed partial class MainViewModel
     public bool HasVisibleFileTasks => FileTasks.Count > 0;
 
     /// <summary>当前是否至少选中一个文件（决定「开始汉化」是否可用）。</summary>
-    public bool HasSelectedFiles => FileTasks.Any(row => row.IsSelected);
+    public bool HasSelectedFiles => FileTasks.Any(row => _fileSelection.IsSelected(row.LogicalFile));
+
+    /// <summary>
+    /// 当前可见范围内**真正被选中**的行。
+    /// 第9.0C.3.1修复：一律以 <see cref="FileSelectionState"/> 为权威，
+    /// **不再**读 <c>FileTaskRow.IsSelected</c>（那是 WPF 绑定会写入的属性，曾被虚拟化回写污染）。
+    /// </summary>
+    private List<FileTaskRow> SelectedVisibleRows()
+        => FileTasks.Where(row => _fileSelection.IsSelected(row.LogicalFile)).ToList();
 
     /// <summary>
     /// 依据最新生产计划刷新文件任务列表（分析完成后 / 翻译前调用）。
@@ -135,7 +143,7 @@ public sealed partial class MainViewModel
 
         if (log)
         {
-            Log($"[调试] 任务范围切换：{TaskScopeText}，可处理文件 {FileTasks.Count}，本轮已选择 {FileTasks.Count(row => row.IsSelected)}");
+            Log($"[调试] 任务范围切换：{TaskScopeText}，可处理文件 {FileTasks.Count}，本轮已选择 {SelectedVisibleRows().Count}");
         }
 
         NotifyWorkflowBindings();
@@ -146,15 +154,17 @@ public sealed partial class MainViewModel
 
     private void UpdateFileSelectionStatistics()
     {
-        var selected = FileTasks.Where(row => row.IsSelected).ToList();
-        var skippedFiles = FileTasks.Count - selected.Count;
-        var skippedUnits = FileTasks.Where(row => !row.IsSelected).Sum(row => row.NeedTranslateCount);
+        // 第9.0C.3.1修复：统计与按钮可用性一律读权威状态（FileSelectionState），
+        // 不读 FileTaskRow.IsSelected —— 后者是 WPF 绑定写入的，曾被行虚拟化回写污染成"全部未选"。
+        var selected = SelectedVisibleRows();
+        var skipped = FileTasks.Where(row => !_fileSelection.IsSelected(row.LogicalFile)).ToList();
+        var skippedUnits = skipped.Sum(row => row.NeedTranslateCount);
         var selectedUnits = selected.Sum(row => row.NeedTranslateCount);
 
         FileSelectionSummaryText =
             $"已选择 {selected.Count} / {FileTasks.Count} 个文件\n"
             + $"本轮将翻译 {selectedUnits} 条"
-            + (skippedFiles > 0 ? $"\n本轮暂不处理：{skippedFiles} 个文件 / {skippedUnits} 条" : string.Empty);
+            + (skipped.Count > 0 ? $"\n本轮暂不处理：{skipped.Count} 个文件 / {skippedUnits} 条" : string.Empty);
 
         OnPropertyChanged(nameof(HasSelectedFiles));
         OnPropertyChanged(nameof(HasVisibleFileTasks));

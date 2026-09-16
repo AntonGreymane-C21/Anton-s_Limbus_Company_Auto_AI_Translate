@@ -242,6 +242,52 @@ public sealed class TaskSelectionTests
         Assert.Equal(2, result.SelectedOutputEntries.Count);          // 无需 AI 的文件仍进输出语义
         Assert.Equal(1, result.TotalFileCount);                       // 统计只算需要 AI 的文件
     }
+
+    // ───────── GUI 守卫（第9.0C.3.1）：复选框必须单向绑定 + 点击写入；统计只读权威状态 ─────────
+
+    [Fact]
+    public void GUI守卫_文件复选框单向绑定且统计只读权威状态()
+    {
+        var root = FindRepositoryRoot();
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "LimbusTranslator.Wpf", "MainWindow.xaml"));
+        var viewModel = File.ReadAllText(Path.Combine(
+            root, "src", "LimbusTranslator.Wpf", "ViewModels", "MainViewModel.TaskSelection.cs"));
+
+        // ① 文件任务表（FileTasks）：复选框单向绑定 + Click 写入
+        //    （TwoWay 会被 DataGrid 编辑模式与行虚拟化回写污染：
+        //     实测症状 = 默认全选被洗成 0 个、第一次点击只选中行不勾框）
+        var gridStart = xaml.IndexOf("ItemsSource=\"{Binding FileTasks}\"", StringComparison.Ordinal);
+        Assert.True(gridStart > 0, "未找到文件任务 DataGrid");
+        var gridEnd = xaml.IndexOf("</DataGrid>", gridStart, StringComparison.Ordinal);
+        var fileGrid = xaml[gridStart..gridEnd];
+
+        Assert.Contains("IsChecked=\"{Binding IsSelected, Mode=OneWay}\"", fileGrid);
+        Assert.Contains("Click=\"FileTaskCheckBox_Click\"", fileGrid);
+        Assert.DoesNotContain("Mode=TwoWay", fileGrid);
+
+        // ② 模板列必须只读，否则第一次点击会被 DataGrid 用于"进入编辑模式"
+        Assert.Contains("DataGridTemplateColumn Header=\"本轮处理\" Width=\"80\" IsReadOnly=\"True\"", fileGrid);
+
+        // ③ 统计 / 按钮可用性必须读权威状态，不能读 WPF 会写入的行属性
+        Assert.Contains("_fileSelection.IsSelected(row.LogicalFile)", viewModel);
+        Assert.DoesNotContain("FileTasks.Where(row => row.IsSelected)", viewModel);
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "LimbusTranslator.slnx")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new InvalidOperationException("未找到仓库根（LimbusTranslator.slnx）");
+    }
 }
 
 /// <summary>

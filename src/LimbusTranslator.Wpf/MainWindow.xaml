@@ -354,12 +354,17 @@
                             </StackPanel>
                             <TextBlock Grid.Row="1" Text="{Binding FileSelectionSummaryText}" Foreground="#31415C" FontWeight="SemiBold" Margin="3,0,0,7" TextWrapping="Wrap"/>
                             <DataGrid Grid.Row="2" ItemsSource="{Binding FileTasks}" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False"
-                                      EnableRowVirtualization="True" RowHeight="26">
+                                      EnableRowVirtualization="True" SelectionMode="Single" RowHeight="26">
                                 <DataGrid.Columns>
-                                    <DataGridTemplateColumn Header="本轮处理" Width="80">
+                                    <DataGridTemplateColumn Header="本轮处理" Width="80" IsReadOnly="True">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <CheckBox HorizontalAlignment="Center" IsChecked="{Binding IsSelected, Mode=TwoWay}"/>
+                                                <!-- 第9.0C.3.1修复：复选框只用「单向绑定 + 点击处理器」写入。
+                                                     原因：模板列可编辑时第一次点击会被 DataGrid 拿去做"进入编辑模式"（行变蓝但勾不上），
+                                                     且行虚拟化回收容器时双向绑定会把旧值回写到新行（把默认全选洗成 0 个）。 -->
+                                                <CheckBox HorizontalAlignment="Center" Focusable="False"
+                                                          IsChecked="{Binding IsSelected, Mode=OneWay}"
+                                                          Click="FileTaskCheckBox_Click"/>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>

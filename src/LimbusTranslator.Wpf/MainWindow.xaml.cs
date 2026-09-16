@@ -237,6 +237,22 @@ public partial class MainWindow : Window
     private void InvertFiles_Click(object sender, RoutedEventArgs e)
         => _viewModel.InvertVisibleFiles();
 
+    /// <summary>
+    /// 第9.0C.3.1修复：文件勾选**只由真实点击写入**（复选框是单向绑定 + Click）。
+    /// 这样彻底避开两个 WPF 陷阱：
+    ///   ① 模板列可编辑时，第一次点击会被 DataGrid 用于"进入编辑模式"，复选框勾不上；
+    ///   ② 行虚拟化回收容器时，双向绑定会把容器上的旧值回写到新行（把"默认全选"洗成 0 个）。
+    /// </summary>
+    private void FileTaskCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.CheckBox box
+            && box.DataContext is LimbusTranslator.Wpf.ViewModels.FileTaskRow row)
+        {
+            row.IsSelected = box.IsChecked == true;
+            box.IsChecked = row.IsSelected;   // 与权威状态保持一致
+        }
+    }
+
     private void ScanTerms_Click(object sender, RoutedEventArgs e)
         => _viewModel.ScanIncrementalTerms();
 
