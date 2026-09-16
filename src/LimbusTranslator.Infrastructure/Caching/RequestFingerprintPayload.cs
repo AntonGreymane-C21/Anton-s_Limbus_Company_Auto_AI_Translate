@@ -92,6 +92,23 @@ public sealed class RequestFingerprintPayload
     /// <summary>v3：日文参考是否变化</summary>
     public bool? JapaneseChanged { get; init; }
 
+    // ───────── 第9.0C.2轮：锁定术语修正请求的独立指纹字段 ─────────
+
+    /// <summary>
+    /// 请求种类：null = 常规翻译请求（**保持历史指纹逐字节不变**）；
+    /// <c>locked_terminology_repair</c> = 锁定术语修正请求。
+    /// </summary>
+    public string? RequestKind { get; init; }
+
+    /// <summary>修正请求携带的「当前译文」（普通翻译请求为 null）</summary>
+    public string? RepairCurrentTranslation { get; init; }
+
+    /// <summary>修正请求携带的「锁定术语清单」（已排序；其内容变化 ⇒ 指纹变化 ⇒ 旧修正缓存自然失效）</summary>
+    public string? RepairLockedTerms { get; init; }
+
+    /// <summary>本次运行的术语快照 Hash（修正请求携带，保证术语库变化后旧修正缓存不误命中）</summary>
+    public string? GlossarySnapshotHash { get; init; }
+
     /// <summary>v3：英文参考是否变化</summary>
     public required IReadOnlyList<RequestFingerprintItem> Items { get; init; }
 }

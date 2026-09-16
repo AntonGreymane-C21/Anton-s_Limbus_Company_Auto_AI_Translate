@@ -9,6 +9,7 @@ using LimbusTranslator.Infrastructure.Diagnostics;
 using LimbusTranslator.Infrastructure.Glossary;
 using LimbusTranslator.Infrastructure.Placeholder;
 using LimbusTranslator.Infrastructure.Translation;
+using LimbusTranslator.Infrastructure.Validation;
 
 namespace LimbusTranslator.Infrastructure.DeepSeek;
 
@@ -27,7 +28,7 @@ namespace LimbusTranslator.Infrastructure.DeepSeek;
 /// 【缓存边界】TM 命中（ExactUnit）在本层之前完成，不会进入 request_cache。
 /// 【资源边界】本类实现 IDisposable：自己创建的客户端与限流器由本类释放，注入的客户端由调用方释放。
 /// </summary>
-public sealed class DeepSeekTranslationProvider : ITranslationProvider, IThinkingDecisionSource, IDisposable
+public sealed class DeepSeekTranslationProvider : ITranslationProvider, IThinkingDecisionSource, ILockedTerminologyRepairProvider, IDisposable
 {
     /// <summary>Provider 标识（进入指纹与 Trace）</summary>
     public const string ProviderName = "deepseek";
@@ -422,6 +423,300 @@ public sealed class DeepSeekTranslationProvider : ITranslationProvider, IThinkin
     }
 
     /// <summary>
+    // ───────── 第9.0C.2轮：锁定术语修正（独立请求种类 + 独立指纹） ─────────
+
+    /// <summary>
+    /// 针对单条条目执行一次锁定术语修正请求（**不做自由翻译**）。
+    ///
+    /// 与常规翻译的差异（仅以下各项）：
+    ///   1. 请求种类 locked_terminology_repair ⇒ 独立指纹，不与翻译请求互相命中；
+    ///   2. 请求体额外携带 CurrentTranslation（当前译文）与 MustUseTerms（锁定术语清单）；
+    ///   3. System Prompt 追加修正规则（DeepSeekRequestComposer.RepairRule）；
+    ///   4. 不注入术语表 / 角色风格段落（锁定术语已显式列出），不携带邻句上下文；
+    ///   5. Thinking 强制关闭（确定性局部校正，节省 Token）。
+    ///
+    /// 四模式语义保持不变：Selected Source 与 CanonicalKorean 的取值规则与常规翻译完全一致，
+    /// 且 TranslationMode 不变（Trace 仍记录原模式）。
+    /// </summary>
+    public async Task<LockedTerminologyRepairResult> RepairLockedTerminologyAsync(
+        DiffEntry entry,
+        IReadOnlyList<TerminologyRequirement> lockedTerms,
+        string currentTranslation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        var terms = (lockedTerms ?? Array.Empty<TerminologyRequirement>())
+            .Where(t => t.Locked && !t.PreservedAsEnglish && !string.IsNullOrWhiteSpace(t.Target))
+            .GroupBy(t => t.Source, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderBy(t => t.Source, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (terms.Count == 0)
+        {
+            return new LockedTerminologyRepairResult { Attempted = false, SkipReason = "无锁定术语" };
+        }
+
+        if (string.IsNullOrWhiteSpace(currentTranslation))
+        {
+            return new LockedTerminologyRepairResult { Attempted = false, SkipReason = "当前译文为空" };
+        }
+
+        if (!SourceTextGuard.IsReusable(entry.NewSourceText))
+        {
+            return new LockedTerminologyRepairResult { Attempted = false, SkipReason = "源文不可用" };
+        }
+
+        var unitKey = entry.Key.ToString();
+        var lockedTermsText = string.Join("\n", terms.Select(t => $"{t.Source} → {t.Target}"));
+        var protectedSource = _protector.Protect(entry.NewSourceText!);
+        var protectedCurrent = _protector.Protect(currentTranslation);
+
+        var item = new DeepSeekTranslateRequestItem
+        {
+            Id = unitKey,
+            Source = protectedSource.ProtectedText,
+            OldSource = entry.OldSourceText is null ? null : _protector.Protect(entry.OldSourceText).ProtectedText,
+            OldTranslation = entry.OldTranslation is null ? null : _protector.Protect(entry.OldTranslation).ProtectedText,
+            Speaker = entry.Speaker,
+            CanonicalKorean = TranslationModePolicy.SendsKorean(_translationMode) && !string.IsNullOrWhiteSpace(entry.CanonicalKoreanText)
+                ? _protector.Protect(entry.CanonicalKoreanText!).ProtectedText
+                : null,
+            OldCanonicalKorean = TranslationModePolicy.SendsKorean(_translationMode) && !string.IsNullOrWhiteSpace(entry.OldCanonicalKoreanText)
+                ? _protector.Protect(entry.OldCanonicalKoreanText!).ProtectedText
+                : null,
+            CurrentTranslation = protectedCurrent.ProtectedText,
+            LockedTerms = lockedTermsText,
+        };
+
+        var requestItems = new List<DeepSeekTranslateRequestItem> { item };
+        var entryBatch = new List<DiffEntry> { entry };
+        // 修正默认关闭 Thinking（确定性局部校正；原因码稳定进入 Trace）
+        var decisions = new ThinkingDecision(false, LockedTerminologyCheck.RepairReasonKind);
+        var batchId = "Repair001";   // 固定：batch_id 进入请求指纹，必须确定性
+        var requestId = _cacheServices?.NextRequestId() ?? $"repair-local-{unitKey}";
+        var startedAt = Stopwatch.StartNew();
+
+        var systemPrompt = DeepSeekRequestComposer.BuildSystemPrompt(
+            _prompt,
+            string.Empty,
+            string.Empty,
+            includeContextRule: false,
+            includeModifiedRule: false,
+            category: null,
+            mode: _translationMode,
+            includeRepairRule: true);
+        var userContent = DeepSeekRequestComposer.BuildUserContent(batchId, requestItems);
+
+        var fingerprint = RequestFingerprintBuilder.Build(new RequestFingerprintPayload
+        {
+            Provider = ProviderName,
+            ProviderIdentity = RequestFingerprintBuilder.SanitizeProviderIdentity(_options.ApiUrl),
+            Model = _options.Model,
+            Temperature = _options.Temperature,
+            MaxTokens = _options.MaxTokens,
+            ResponseFormat = DeepSeekRequestComposer.ResponseFormatType,
+            Thinking = decisions.Enabled,
+            ReasoningEffort = null,
+            SystemPrompt = systemPrompt,
+            UserContent = userContent,
+            GlossaryPrompt = null,
+            CharacterStylePrompt = null,
+            SourceModeCode = TranslationModeCodes.ToCode(_translationMode),
+            EffectiveSourceLanguage = ResolveEffectiveLanguageCode(entryBatch),
+            SelectedSourceText = item.Source,
+            OldSelectedSourceText = item.OldSource,
+            CanonicalKoreanText = TranslationModePolicy.UsesCanonicalKoreanDiff(_translationMode) ? item.CanonicalKorean : null,
+            OldCanonicalKoreanText = TranslationModePolicy.UsesCanonicalKoreanDiff(_translationMode) ? item.OldCanonicalKorean : null,
+            // 修正请求独立字段：术语内容 / 当前译文 / 术语快照 Hash 全部进入指纹
+            RequestKind = LockedTerminologyCheck.RepairReasonKind,
+            RepairCurrentTranslation = protectedCurrent.ProtectedText,
+            RepairLockedTerms = lockedTermsText,
+            GlossarySnapshotHash = _glossarySnapshot?.SnapshotHash,
+            Items = new[]
+            {
+                new RequestFingerprintItem
+                {
+                    Id = DeepSeekResponseParser.EncodeId(item.Id),
+                    UnitKey = item.Id,
+                    TranslationMode = entry.Action.ToString(),
+                    Source = item.Source,
+                    OldSource = item.OldSource,
+                    OldTranslation = item.OldTranslation,
+                    Speaker = item.Speaker,
+                    Context = null,
+                },
+            },
+        });
+
+        CachedProviderBatchResponse? cached = null;
+        if (_cacheServices?.Cache is not null)
+        {
+            cached = _cacheServices.Cache.TryGet(fingerprint.Value);
+            if (cached is not null && !IsCacheUsable(cached, requestItems))
+            {
+                _log($"[调试] 锁定术语修正缓存无效（ID 集合不一致），按 Cache Miss 处理: Fingerprint={fingerprint.ShortValue}");
+                cached = null;
+            }
+        }
+
+        var cacheHit = cached is not null;
+        try
+        {
+            await _rateLimiter.WaitAsync(cancellationToken);
+            try
+            {
+                var batchResult = cacheHit
+                    ? ReplayCached(cached!)
+                    : await _client.TranslateBatchWithMetadataAsync(
+                        batchId, requestItems, cancellationToken, string.Empty, string.Empty,
+                        new DeepSeekRequestThinking(decisions.Enabled, decisions.Enabled ? decisions.ReasoningEffort : null),
+                        includeModifiedRule: false,
+                        category: null,
+                        _translationMode);
+
+                var placeholderFailed = false;
+                var cacheItems = new List<CachedProviderItem>(batchResult.Items.Count);
+                string? repaired = null;
+                var needsReview = false;
+                string? reviewReason = null;
+                var issues = new List<ValidationIssue>();
+
+                if (batchResult.Items.TryGetValue(unitKey, out var repairedItem))
+                {
+                    needsReview = repairedItem.NeedsReview;
+                    reviewReason = string.IsNullOrEmpty(repairedItem.Reason) ? null : repairedItem.Reason;
+
+                    // 与常规翻译完全相同的 Placeholder 恢复链（修正不得破坏占位符）
+                    var lenient = _protector.RestoreLenient(repairedItem.Translation, protectedSource);
+                    repaired = lenient.Text;
+                    if (!lenient.Validation.IsValid)
+                    {
+                        needsReview = true;
+                        reviewReason = $"Placeholder 校验异常: {lenient.Validation.Describe()}";
+                        placeholderFailed = true;
+                        issues.Add(new ValidationIssue
+                        {
+                            Key = entry.Key,
+                            Code = ValidationIssueCodes.PlaceholderMismatch,
+                            Severity = ValidationSeverity.Error,
+                            Category = ValidationCategory.Placeholder,
+                            Validator = nameof(PlaceholderProtector),
+                            Message = $"Placeholder 宽容恢复: {lenient.Validation.Describe()}",
+                        });
+                    }
+
+                    cacheItems.Add(new CachedProviderItem
+                    {
+                        Id = repairedItem.Id,
+                        Translation = repairedItem.Translation,
+                        NeedsReview = repairedItem.NeedsReview,
+                        Reason = repairedItem.Reason,
+                    });
+                }
+                else
+                {
+                    placeholderFailed = true;
+                    reviewReason = "修正响应缺少该条目";
+                }
+
+                // 只有「新请求 + Placeholder 校验通过」才暂存缓存；落库由 Agent 在最终校验通过后 Flush
+                if (!cacheHit && !placeholderFailed && _cacheServices?.Staging is not null)
+                {
+                    _cacheServices.Staging.Stage(requestId, fingerprint.Value, new CachedProviderBatchResponse
+                    {
+                        FormatVersion = CachedProviderBatchResponse.CurrentFormatVersion,
+                        Provider = ProviderName,
+                        Model = _options.Model,
+                        CreatedAtUtc = DateTime.UtcNow,
+                        ResponseId = batchResult.ResponseId,
+                        ResponseModel = batchResult.ResponseModel,
+                        PromptTokens = batchResult.PromptTokens,
+                        CompletionTokens = batchResult.CompletionTokens,
+                        TotalTokens = batchResult.TotalTokens,
+                        ReasoningTokens = batchResult.ReasoningTokens,
+                        Items = cacheItems,
+                    });
+                }
+
+                _log(cacheHit
+                    ? $"[调试] 锁定术语自动修正：缓存命中（未产生网络请求）｜UnitKey={unitKey}"
+                    : $"[调试] 锁定术语自动修正：已请求模型｜UnitKey={unitKey}｜锁定期望 {terms.Count} 条｜指纹={fingerprint.ShortValue}");
+
+                startedAt.Stop();
+                WriteTrace(
+                    stageId: entry.Key.RelativeFilePath,
+                    batchId,
+                    requestId,
+                    requestItems,
+                    fingerprint,
+                    decisions,
+                    cacheHit,
+                    batchResult,
+                    startedAt.ElapsedMilliseconds,
+                    success: true,
+                    failure: null,
+                    fallbackItemCount: 0,
+                    fallbackUnitKeys: null,
+                    glossaryTerms: null,
+                    batchContext: entryBatch);
+
+                return new LockedTerminologyRepairResult
+                {
+                    Attempted = true,
+                    Translation = repaired,
+                    CacheHit = cacheHit,
+                    RequestId = requestId,
+                    NeedsReview = needsReview,
+                    ReviewReason = reviewReason,
+                    Issues = issues,
+                    InputTokens = batchResult.PromptTokens,
+                    OutputTokens = batchResult.CompletionTokens,
+                    ReasoningTokens = batchResult.ReasoningTokens,
+                    SkipReason = repaired is null ? "修正响应缺少条目" : null,
+                };
+            }
+            finally
+            {
+                _rateLimiter.Release();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            startedAt.Stop();
+            WriteTrace(
+                stageId: entry.Key.RelativeFilePath,
+                batchId,
+                requestId,
+                requestItems: null,
+                fingerprint: null,
+                decisions,
+                cacheHit: false,
+                batchResult: null,
+                startedAt.ElapsedMilliseconds,
+                success: false,
+                failure: ex,
+                fallbackItemCount: 1,
+                fallbackUnitKeys: new[] { unitKey },
+                glossaryTerms: null,
+                batchContext: entryBatch);
+
+            _log($"[错误] 锁定术语自动修正失败（已保留原译文，转人工审核）: {ex.Message}");
+            return new LockedTerminologyRepairResult
+            {
+                Attempted = true,
+                Translation = null,
+                RequestId = requestId,
+                SkipReason = ex.Message,
+            };
+        }
+    }
+
     /// 缓存结构校验（第4轮）：Cached ID 集合必须与请求 ID 集合完全一致。
     /// 检测 Missing / Extra / Duplicate，任一不满足都视为无效缓存。
     /// </summary>

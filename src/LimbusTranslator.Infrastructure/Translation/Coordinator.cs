@@ -90,7 +90,9 @@ public sealed class Coordinator
                         activeAgents: currentActive,
                         validation: _validation,
                         cacheServices: _cacheServices,
-                        contextBuilder: _contextBuilder);
+                        contextBuilder: _contextBuilder,
+                        // 第9.0C.2轮：锁定术语自动修正（复用同一个 Provider + 校验链）
+                        repairService: new LockedTerminologyRepairService(_provider, _validation, _log));
                     var result = await agent.ExecuteAsync(stage.Stage, stage.Entries, cancellationToken);
 
                     lock (results)

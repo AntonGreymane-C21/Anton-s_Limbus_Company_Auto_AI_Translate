@@ -185,6 +185,17 @@ public static class RequestFingerprintBuilder
                 writer.WriteBoolean("japaneseChanged", payload.JapaneseChanged.Value);
             }
 
+            // 第9.0C.2轮：锁定术语修正请求的独立字段
+            // **仅在该请求确实是修正请求时才写入** ⇒ 常规翻译请求的 canonical JSON 与历史逐字节一致
+            //（否则新增的 null 字段会让用户已有的 v3 请求缓存全部失效，白白重跑真实 API）。
+            if (payload.RequestKind is not null)
+            {
+                writer.WriteString("requestKind", payload.RequestKind);
+                WriteNullableString(writer, "repairCurrentTranslation", payload.RepairCurrentTranslation);
+                WriteNullableString(writer, "repairLockedTerms", payload.RepairLockedTerms);
+                WriteNullableString(writer, "glossarySnapshotHash", payload.GlossarySnapshotHash);
+            }
+
             writer.WriteStartArray("items");
             foreach (var item in payload.Items)
             {

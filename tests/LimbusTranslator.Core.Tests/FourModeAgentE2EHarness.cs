@@ -597,6 +597,20 @@ internal sealed class FakeE2EBatchClient : IDeepSeekBatchClient
     /// <summary>假译文工厂（默认纯中文）。</summary>
     public Func<DeepSeekTranslateRequestItem, string> TranslationFactory { get; set; } = _ => "测试译文";
 
+    /// <summary>
+    /// 第9.0C.2轮：按**调用序号**脚本化的假译文（index 从 0 开始）。
+    /// 用于让「首次翻译」与「锁定术语修正」两次请求返回不同内容。
+    /// </summary>
+    public Func<int, DeepSeekTranslateRequestItem, string>? ScriptedTranslation { get; set; }
+
+    /// <summary>锁定术语修正请求收到的条目（第9.0C.2轮）。</summary>
+    public IReadOnlyList<DeepSeekTranslateRequestItem> RepairItems
+        => AllItems.Where(item => !string.IsNullOrEmpty(item.LockedTerms)).ToList();
+
+    /// <summary>常规翻译请求收到的条目（第9.0C.2轮）。</summary>
+    public IReadOnlyList<DeepSeekTranslateRequestItem> TranslateItems
+        => AllItems.Where(item => string.IsNullOrEmpty(item.LockedTerms)).ToList();
+
     /// <summary>Batch 调用次数（= 真实网络请求次数，本测试恒为 0 才是安全的）。</summary>
     public int BatchCallCount
     {
@@ -713,8 +727,10 @@ internal sealed class FakeE2EBatchClient : IDeepSeekBatchClient
         DeepSeekRequestThinking? thinking,
         string? glossaryPrompt = null)
     {
+        int callIndex;
         lock (_gate)
         {
+            callIndex = _itemCounts.Count;
             _itemCounts.Add(items.Count);
             _modes.Add(mode);
             _thinkings.Add(thinking);
@@ -722,11 +738,14 @@ internal sealed class FakeE2EBatchClient : IDeepSeekBatchClient
             _allItems.AddRange(items);
         }
 
+        string FakeTranslation(DeepSeekTranslateRequestItem item)
+            => ScriptedTranslation is null ? TranslationFactory(item) : ScriptedTranslation(callIndex, item);
+
         return new DeepSeekBatchResult
         {
             Items = items.ToDictionary(
                 item => item.Id,
-                item => new DeepSeekTranslateItem(item.Id, TranslationFactory(item), NeedsReview: false, Reason: string.Empty),
+                item => new DeepSeekTranslateItem(item.Id, FakeTranslation(item), NeedsReview: false, Reason: string.Empty),
                 StringComparer.Ordinal),
             ResponseId = "fake-e2e-response",
             ResponseModel = "fake-e2e-model",

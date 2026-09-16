@@ -289,7 +289,16 @@ public sealed class ReviewDisplayModel
             + $"｜旧韩文存在：{(entry.OldCanonicalKoreanText is null ? "否" : "是")}",
             $"TM 命中：{entry.TmMatchType}｜盐（SourceHashSalt）：{(entry.SourceHashSalt is null ? "无（EN_ONLY 兼容旧 TM）" : "有")}",
             $"英文参考是否变化：{DescribeFlag(entry.EnglishReferenceChanged)}｜日文参考是否变化：{DescribeFlag(entry.JapaneseReferenceChanged)}",
-        };
+            // 第9.0C.2轮：锁定术语自动修正（只在真的发生过时出现）
+            entry.TerminologyRepairAttempts == 0
+                ? null
+                : $"锁定术语自动修正：{entry.TerminologyRepairAttempts} 次｜结果："
+                  + (entry.TerminologyRepairSucceeded ? "成功（已使用规定译法）" : "仍违规（转人工审核）")
+                  + (string.IsNullOrWhiteSpace(entry.TerminologyRepairNote) ? string.Empty : $"｜{entry.TerminologyRepairNote}"),
+        }
+        .Where(row => row is not null)
+        .Select(row => row!)
+        .ToArray();
 
     private static string DescribeFlag(bool? value) => value is null ? "不适用" : value.Value ? "是" : "否";
 

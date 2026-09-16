@@ -146,6 +146,11 @@ public sealed class TranslationTraceEntry
     /// <summary>日文参考译本是否变化（仅诊断，不影响动作/缓存语义）</summary>
     public bool? JapaneseChanged { get; init; }
 
+    /// <summary>
+    /// 第9.0C.2轮：请求种类（<c>locked_terminology_repair</c> = 锁定术语修正请求；null = 常规翻译）。
+    /// </summary>
+    public string? RequestKind { get; init; }
+
     /// <summary>清洗后的错误摘要（异常类型 / HTTP 状态 / 简短原因）</summary>
     public string? ErrorSummary { get; init; }
 }

@@ -40,27 +40,14 @@ public sealed class TerminologyValidator : ITranslationValidator
             return Array.Empty<ValidationIssue>();
         }
 
-        var mismatched = new List<string>();
-        foreach (var term in context.Terminology)
-        {
-            if (!term.Locked || term.PreservedAsEnglish || string.IsNullOrWhiteSpace(term.Target))
-            {
-                continue;
-            }
-
-            if (_options.TerminologyRequireWordBoundary
-                && !ValidationTextTools.ContainsAsWord(context.SourceText, term.Source))
-            {
-                continue;
-            }
-
-            if (context.Translation.Contains(term.Target, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            mismatched.Add($"{term.Source}→{term.Target}");
-        }
+        var mismatched = LockedTerminologyCheck
+            .FindViolations(
+                context.SourceText,
+                context.Translation,
+                context.Terminology,
+                _options.TerminologyRequireWordBoundary)
+            .Select(violation => violation.ToString())
+            .ToList();
 
         if (mismatched.Count == 0)
         {

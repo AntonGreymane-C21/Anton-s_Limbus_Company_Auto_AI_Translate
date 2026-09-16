@@ -37,6 +37,12 @@ public sealed class AgentExecutionResult
     /// <summary>校验 Warning 数</summary>
     public int ValidationWarningCount { get; init; }
 
+    /// <summary>第9.0C.2轮：锁定术语自动修正尝试次数</summary>
+    public int TerminologyRepairAttemptCount { get; init; }
+
+    /// <summary>第9.0C.2轮：锁定术语自动修正成功（修正后不再违规）次数</summary>
+    public int TerminologyRepairSuccessCount { get; init; }
+
     /// <summary>错误信息（失败时）</summary>
     public string? Error { get; init; }
 }
@@ -77,4 +83,10 @@ public sealed class CoordinatorResult
 
     /// <summary>校验 Warning 总数</summary>
     public int TotalValidationWarnings => Agents.Sum(a => a.ValidationWarningCount);
+
+    /// <summary>第9.0C.2轮：锁定术语自动修正尝试总数</summary>
+    public int TotalTerminologyRepairAttempts => Agents.Sum(a => a.TerminologyRepairAttemptCount);
+
+    /// <summary>第9.0C.2轮：锁定术语自动修正成功总数</summary>
+    public int TotalTerminologyRepairSuccesses => Agents.Sum(a => a.TerminologyRepairSuccessCount);
 }

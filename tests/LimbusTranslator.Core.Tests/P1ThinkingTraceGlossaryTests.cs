@@ -271,12 +271,16 @@ public sealed class P1ThinkingTraceGlossaryTests : IDisposable
         Assert.Equal(new[] { "Hello", "반갑습니다" }, sources);
 
         // ② Prompt 使用同一份（不重新匹配）
-        var prompt = Assert.Single(client.GlossaryPrompts);
+        //    第9.0C.2轮：Fake 批量客户端返回的译文违反锁定术语 ⇒ 会追加一次**修正请求**
+        //    （修正请求不注入术语表段落），因此这里只断言「翻译请求」那一条。
+        var prompt = Assert.Single(client.GlossaryPrompts, p => !string.IsNullOrEmpty(p));
         Assert.Contains("Hello", prompt);
         Assert.Contains("반갑습니다", prompt);
 
-        // ③ Trace 记录同一份
-        var traceTerms = TraceString(SingleTrace(run), "glossaryTerms");
+        // ③ Trace 记录同一份（取携带术语摘要的那条 Trace）
+        var traceTerms = TraceOf(run)
+            .Select(trace => TraceString(trace, "glossaryTerms"))
+            .FirstOrDefault(value => value is not null);
         Assert.NotNull(traceTerms);
         Assert.Contains("Hello", traceTerms);
         Assert.Contains("반갑습니다", traceTerms);
@@ -302,7 +306,8 @@ public sealed class P1ThinkingTraceGlossaryTests : IDisposable
         var entry = Assert.Single(run.Plan.OutputEntries);
         Assert.Null(entry.CanonicalKoreanText);                       // EN_ONLY 不注入 Canonical
         Assert.Equal(new[] { "Hello" }, entry.MatchedTerms!.Select(term => term.Source).ToArray());
-        var prompt = Assert.Single(client.GlossaryPrompts);
+        // 第9.0C.2轮：违反锁定术语会追加一次修正请求（不注入术语表段落）⇒ 只看翻译请求那一条
+        var prompt = Assert.Single(client.GlossaryPrompts, p => !string.IsNullOrEmpty(p));
         Assert.Contains("Hello", prompt);
         Assert.DoesNotContain("반갑습니다", prompt);
     }

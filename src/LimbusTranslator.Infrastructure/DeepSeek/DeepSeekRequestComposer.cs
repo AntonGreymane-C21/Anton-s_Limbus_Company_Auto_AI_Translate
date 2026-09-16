@@ -71,7 +71,8 @@ public static class DeepSeekRequestComposer
                 {
                     role = "system",
                     content = BuildSystemPrompt(
-                        prompt, glossaryPrompt, characterStylePrompt, ContainsContext(items), includeModifiedRule, category, mode),
+                        prompt, glossaryPrompt, characterStylePrompt, ContainsContext(items), includeModifiedRule, category, mode,
+                        ContainsRepairItems(items)),
                 },
                 new
                 {
@@ -129,9 +130,26 @@ public static class DeepSeekRequestComposer
     };
 
     /// <summary>
+    /// 第9.0C.2轮：锁定术语修正规则（**只**在修正请求中追加）。
+    /// 明确告知模型这是「修订已有译文」而不是重新翻译，并列出不得改动的部分。
+    /// </summary>
+    public const string RepairRule =
+        "锁定术语修订任务（重要）：本次不是重新翻译，而是修订一条已经完成的中文译文。\n"
+        + "items[].MustUseTerms 中列出的是【锁定术语】，属于强制规则：最终译文必须使用其中指定的中文译法，"
+        + "不得使用同义词、近义词、意译或自行改写术语本身。\n"
+        + "在尽量保持当前译文（items[].CurrentTranslation）其它内容不变的前提下，只修正术语违规。\n"
+        + "禁止：删除原有信息、添加原文没有的信息、修改数字、修改占位符（如 {0}）、修改富文本标签、"
+        + "修改角色名、改动不相关句子。\n"
+        + "输出格式与普通翻译请求完全一致：仍然返回 items 数组，id 原样返回，translation 为修正后的完整中文译文。";
+
+    /// <summary>请求中是否存在锁定术语修正项（决定是否追加修正规则）。</summary>
+    public static bool ContainsRepairItems(IReadOnlyList<DeepSeekTranslateRequestItem>? items)
+        => items is not null && items.Any(i => !string.IsNullOrEmpty(i.LockedTerms));
+
+    /// <summary>
     /// 组合完整系统提示词（基础规则 + 输出格式 + 术语表 + 角色风格 [+ 上下文规则] [+ 旧译文规则] [+ 分类指令]）。
     ///
-    /// includeContextRule / includeModifiedRule / category 均为可选：
+    /// includeContextRule / includeModifiedRule / category / includeRepairRule 均为可选：
     /// 未提供时输出与历史版本**逐字节一致**，避免无意义地让既有请求缓存全部失效。
     /// </summary>
     public static string BuildSystemPrompt(
@@ -141,7 +159,8 @@ public static class DeepSeekRequestComposer
         bool includeContextRule = false,
         bool includeModifiedRule = false,
         TextCategory? category = null,
-        TranslationMode mode = TranslationMode.EnglishOnly)
+        TranslationMode mode = TranslationMode.EnglishOnly,
+        bool includeRepairRule = false)
     {
         var options = prompt ?? new PromptOptions();
         var basePrompt = options.SystemPrompt + "\n" + options.OutputFormat;
@@ -176,6 +195,13 @@ public static class DeepSeekRequestComposer
                 basePrompt += "\n\n" + categoryInstruction;
             }
         }
+
+        // 第9.0C.2轮：锁定术语修正规则（只在修正请求中追加；普通翻译请求不受影响）
+        if (includeRepairRule)
+        {
+            basePrompt += "\n\n" + RepairRule;
+        }
+
         return basePrompt;
     }
 
@@ -233,6 +259,17 @@ public static class DeepSeekRequestComposer
         if (contextJson is not null)
         {
             payload["context"] = JsonNode.Parse(contextJson);
+        }
+
+        // 第9.0C.2轮：锁定术语修正项（普通翻译请求为 null ⇒ 请求体与历史逐字节一致）
+        if (!string.IsNullOrEmpty(item.CurrentTranslation))
+        {
+            payload["CurrentTranslation"] = item.CurrentTranslation;
+        }
+
+        if (!string.IsNullOrEmpty(item.LockedTerms))
+        {
+            payload["MustUseTerms"] = item.LockedTerms;
         }
 
         return payload;

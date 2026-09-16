@@ -140,6 +140,10 @@ public sealed partial class MainViewModel
             + $"纯符号直通：{result.TotalPassthrough}\n"
             + $"空源文跳过：{result.TotalEmptySourceSkipped}（继承旧中文 {result.TotalEmptySourceInherited}）\n"
             + $"需要人工审核：{result.TotalNeedsReview}\n"
+            + (result.TotalTerminologyRepairAttempts == 0
+                ? string.Empty
+                : $"锁定术语自动修正：{result.TotalTerminologyRepairAttempts} 次"
+                  + $"（成功 {result.TotalTerminologyRepairSuccesses}，仍需人工 {result.TotalTerminologyRepairAttempts - result.TotalTerminologyRepairSuccesses}）\n")
             + $"校验 Error：{result.TotalValidationErrors}\n"
             + $"校验 Warning：{result.TotalValidationWarnings}\n"
             + $"队列条目：{queueCount}";

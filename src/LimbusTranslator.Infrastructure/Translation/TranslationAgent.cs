@@ -33,6 +33,9 @@ public sealed class TranslationAgent
     private readonly TranslationCacheServices? _cacheServices;
     private readonly ITranslationContextBuilder? _contextBuilder;
 
+    /// <summary>第9.0C.2轮：锁定术语自动修正（null = 关闭该能力，行为与修复前一致）。</summary>
+    private readonly LockedTerminologyRepairService? _repairService;
+
     public TranslationAgent(
         ITranslationProvider provider,
         RateLimitManager rateLimit,
@@ -42,7 +45,8 @@ public sealed class TranslationAgent
         int activeAgents = 1,
         ValidationPipeline? validation = null,
         TranslationCacheServices? cacheServices = null,
-        ITranslationContextBuilder? contextBuilder = null)
+        ITranslationContextBuilder? contextBuilder = null,
+        LockedTerminologyRepairService? repairService = null)
     {
         _provider = provider;
         _rateLimit = rateLimit;
@@ -53,6 +57,7 @@ public sealed class TranslationAgent
         _validation = validation ?? new ValidationPipeline();
         _cacheServices = cacheServices;
         _contextBuilder = contextBuilder;
+        _repairService = repairService;
     }
 
     /// <summary>
@@ -84,6 +89,8 @@ public sealed class TranslationAgent
             var emptySourceSkipped = 0;
             var emptySourceInherited = 0;
             var passthroughCount = 0;
+            var repairAttempts = 0;
+            var repairSuccesses = 0;
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -163,7 +170,32 @@ public sealed class TranslationAgent
 
                     // 第2轮：TM 命中也要经过当前 ValidatorPipeline（规则升级后仍能发现旧缓存问题），
                     //         但遵循来源感知策略（人工确认不会被普通 Warning 抹掉）。
-                    _validation.ValidateAndApply(entry);
+                    // 第9.0C.2轮：命中结果若违反**当前**锁定术语，同样进入自动修正闭环
+                    //         （不允许因为 TM 命中就绕过最新术语规则）。
+                    var tmHitRepairIds = new List<string>();
+                    var tmHitValidation = await ValidateAndMaybeRepairAsync(
+                        entry, preexistingIssues: null, tmHitRepairIds, cancellationToken);
+                    if (tmHitValidation.Attempts > 0)
+                    {
+                        repairAttempts += tmHitValidation.Attempts;
+                        if (tmHitValidation.Succeeded)
+                        {
+                            repairSuccesses++;
+                        }
+
+                        if (tmHitValidation.Report.Issues.Any(i => i.Severity == ValidationSeverity.Error))
+                        {
+                            foreach (var repairId in tmHitRepairIds)
+                            {
+                                _cacheServices?.Staging?.Discard(repairId);
+                            }
+                        }
+                        else
+                        {
+                            // 修正结果无硬安全问题 ⇒ 允许写入 request_cache
+                            _cacheServices?.Staging?.Flush(tmHitRepairIds);
+                        }
+                    }
                     if (entry.NeedsReview)
                     {
                         needsReview++;
@@ -225,12 +257,45 @@ public sealed class TranslationAgent
 
                         // 第2轮：Placeholder 恢复之后、TM 写入之前执行统一校验。
                         // Issues 与 NeedsReview 分层：Provider 已有的结构化 Issue 一并合并。
-                        var validationReport = _validation.ValidateAndApply(entry, result.Issues);
+                        // 第9.0C.2轮：违反锁定术语时自动修正一次，并对修正结果重新跑完整校验链。
+                        //     模型自报 needs_review 时，术语修好也不清除待审核标记。
+                        var repairIds = new List<string>();
+                        var validationReport = await ValidateAndMaybeRepairAsync(
+                            entry, result.Issues, repairIds, cancellationToken, result.NeedsReview);
+                        if (repairIds.Count > 0)
+                        {
+                            if (validationReport.Report.Issues.Any(i => i.Severity == ValidationSeverity.Error))
+                            {
+                                foreach (var repairId in repairIds)
+                                {
+                                    _cacheServices?.Staging?.Discard(repairId);
+                                }
+                            }
+                            else
+                            {
+                                foreach (var repairId in repairIds)
+                                {
+                                    if (!requestIds.Contains(repairId))
+                                    {
+                                        requestIds.Add(repairId);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (entry.TerminologyRepairAttempts > 0)
+                        {
+                            repairAttempts += entry.TerminologyRepairAttempts;
+                            if (entry.TerminologyRepairSucceeded)
+                            {
+                                repairSuccesses++;
+                            }
+                        }
 
                         // 第4轮：校验发现硬安全问题的请求，不允许写入可命中的 request_cache
                         //（只保留 Trace；下一次相同请求允许重新调用 Provider）
                         if (result.RequestId is not null
-                            && validationReport.Issues.Any(i => i.Severity == ValidationSeverity.Error))
+                            && validationReport.Report.Issues.Any(i => i.Severity == ValidationSeverity.Error))
                         {
                             _cacheServices?.Staging?.Discard(result.RequestId);
                         }
@@ -248,10 +313,12 @@ public sealed class TranslationAgent
                             var unit = TranslationUnitFactory.FromDiffEntry(entry);
                             // 第2轮：落库必须反映校验后的状态（含 NeedsReview / 审核原因），
                             //         否则下一次 ExactUnit 命中会丢失待审标记。
+                            // 第9.0C.2轮：译文取**锁定术语修正之后**的最终结果（entry.Translation），
+                            //         否则下次 TM 命中会把违反锁定术语的旧译文再拿回来。
                             _memory.Save(unit, new TranslationResult
                             {
                                 Key = result.Key,
-                                Translation = result.Translation,
+                                Translation = entry.Translation ?? result.Translation,
                                 Source = result.Source,
                                 NeedsReview = entry.NeedsReview,
                                 ReviewReason = entry.ReviewReason,
@@ -287,6 +354,11 @@ public sealed class TranslationAgent
             }
 
             _log($"[调试] Agent[{stageId}] 完成: 翻译 {translated} 条, 需审核 {needsReview} 条");
+            if (repairAttempts > 0)
+            {
+                _log($"[调试] Agent[{stageId}] 锁定术语自动修正: 尝试 {repairAttempts} 次, 成功 {repairSuccesses} 次, 仍需人工 {repairAttempts - repairSuccesses} 次");
+            }
+
             return new AgentExecutionResult
             {
                 StageId = stageId,
@@ -299,6 +371,8 @@ public sealed class TranslationAgent
                 EmptySourceInheritedCount = emptySourceInherited,
                 ValidationErrorCount = errorIssues,
                 ValidationWarningCount = warningIssues,
+                TerminologyRepairAttemptCount = repairAttempts,
+                TerminologyRepairSuccessCount = repairSuccesses,
             };
         }
         catch (OperationCanceledException)
@@ -322,5 +396,52 @@ public sealed class TranslationAgent
             };
         }
     }
+
+    /// <summary>
+    /// 统一校验入口（第9.0C.2轮）：先跑完整校验链；若发现**锁定术语**违规，
+    /// 自动修正一次，并对修正结果**重新**跑完整校验链（占位符 / 数字 / 标签 / 残留 / 长度…）。
+    ///
+    /// 修正服务会把最终译文与最终校验结论写回 <paramref name="entry"/>
+    /// （含 <see cref="DiffEntry.TerminologyRepairAttempts"/> / <see cref="DiffEntry.TerminologyRepairNote"/>）。
+    /// 返回的是**最终**校验报告，供调用方决定 request_cache 落库还是丢弃。
+    /// </summary>
+    private async Task<RepairAwareValidation> ValidateAndMaybeRepairAsync(
+        DiffEntry entry,
+        IReadOnlyList<ValidationIssue>? preexistingIssues,
+        List<string> repairRequestIds,
+        CancellationToken cancellationToken,
+        bool providerRequestedReview = false)
+    {
+        var report = _validation.ValidateAndApply(entry, preexistingIssues);
+        if (_repairService is null)
+        {
+            return new RepairAwareValidation(report, 0, false);
+        }
+
+        var outcome = await _repairService.TryRepairAsync(
+            entry, report, preexistingIssues, providerRequestedReview, cancellationToken);
+        if (!outcome.Attempted)
+        {
+            return new RepairAwareValidation(report, 0, false);
+        }
+
+        if (outcome.RequestId is not null)
+        {
+            repairRequestIds.Add(outcome.RequestId);
+        }
+
+        // 修正服务已把最终 Issues / NeedsReview 写回 entry（可能为回滚后的原结论）
+        var finalReport = new ValidationReport
+        {
+            Key = report.Key,
+            Policy = report.Policy,
+            Issues = entry.ValidationIssues,
+            Validators = report.Validators,
+        };
+        return new RepairAwareValidation(finalReport, outcome.AttemptCount, outcome.Succeeded);
+    }
+
+    /// <summary>校验（含自动修正）的最终结论。</summary>
+    private readonly record struct RepairAwareValidation(ValidationReport Report, int Attempts, bool Succeeded);
 }
 

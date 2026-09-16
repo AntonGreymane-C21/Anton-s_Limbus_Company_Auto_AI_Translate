@@ -247,6 +247,14 @@ public sealed class DeepSeekTranslateRequestItem
 
     /// <summary>第9.0B.2轮：旧韩文原文（Modified；EN_ONLY 必须为 null）</summary>
     public string? OldCanonicalKorean { get; init; }
+
+    // ───────── 第9.0C.2轮：锁定术语修正（普通翻译请求必须为 null） ─────────
+
+    /// <summary>当前译文（仅修正请求携带；普通翻译请求为 null ⇒ 请求体与历史逐字节一致）</summary>
+    public string? CurrentTranslation { get; init; }
+
+    /// <summary>本次修正必须遵守的锁定术语（已排序的多行文本“Source → Target”；仅修正请求携带）</summary>
+    public string? LockedTerms { get; init; }
 }
 
 public sealed record DeepSeekTranslateItem(string Id, string Translation, bool NeedsReview, string Reason);

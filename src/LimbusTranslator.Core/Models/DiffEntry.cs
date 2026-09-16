@@ -101,4 +101,15 @@ public sealed class DiffEntry
     /// 不参与动作与缓存语义；null ⇒ N/A（EN_ONLY 或未注入）。
     /// </summary>
     public bool? JapaneseReferenceChanged { get; set; }
+
+    // ───────── 第9.0C.2轮：锁定术语自动修正（Locked 术语执行闭环） ─────────
+
+    /// <summary>本条目执行的锁定术语自动修正次数（0 = 未触发；本轮上限 1）</summary>
+    public int TerminologyRepairAttempts { get; set; }
+
+    /// <summary>自动修正后是否已不再违反锁定术语</summary>
+    public bool TerminologyRepairSucceeded { get; set; }
+
+    /// <summary>自动修正的可读结论（进入 Review 技术详情；null = 未发生）</summary>
+    public string? TerminologyRepairNote { get; set; }
 }
