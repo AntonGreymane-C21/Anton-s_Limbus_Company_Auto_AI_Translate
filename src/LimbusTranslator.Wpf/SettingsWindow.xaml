@@ -1,0 +1,196 @@
+<Window x:Class="LimbusTranslator.Wpf.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="配置中心 · 自动增量汉化"
+        Height="710" Width="920" MinHeight="560" MinWidth="760"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#151D30" CornerRadius="14" Padding="18,14" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Border Width="40" Height="40" CornerRadius="10" Background="#2E6BDE" VerticalAlignment="Center">
+                    <TextBlock Text="⚙" Foreground="White" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="配置中心" Foreground="White" FontSize="18" FontWeight="SemiBold"/>
+                    <TextBlock Text="保存后立即用于下一次翻译；不会修改你的历史备份文件。" Foreground="#AEBBD0" FontSize="12" Margin="0,3,0,0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1" Background="White" BorderBrush="#E1E8F0" BorderThickness="1" CornerRadius="14" Padding="4">
+            <TabControl>
+                <TabItem Header="AI 提示词">
+                    <Grid Margin="16">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <Border Grid.Row="0" Background="#F5F9FF" BorderBrush="#D9E7F8" BorderThickness="1" CornerRadius="10" Padding="11" Margin="0,0,0,10">
+                            <StackPanel>
+                                <TextBlock Text="系统提示词" Style="{StaticResource SectionTitle}"/>
+                                <TextBlock Text="这里定义基础翻译规则。恢复默认只会填回默认内容，点击保存后才会写入配置文件。" Style="{StaticResource MutedText}" Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        <TextBox Grid.Row="1" Text="{Binding SystemPrompt, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" Padding="10" FontFamily="Consolas" FontSize="12"/>
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                            <Button Content="恢复默认" Width="92" Margin="0,0,7,0" Click="ResetPrompt_Click"/>
+                            <Button Content="保存提示词" Width="104" Style="{StaticResource PrimaryButton}" Click="SavePrompt_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </TabItem>
+
+                <TabItem Header="专业术语">
+                    <Grid Margin="16">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <Border Grid.Row="0" Background="#F8F6FD" BorderBrush="#E4DDF5" BorderThickness="1" CornerRadius="10" Padding="11" Margin="0,0,0,10">
+                            <StackPanel>
+                                <TextBlock Text="主术语库 glossary.json" Style="{StaticResource SectionTitle}"/>
+                                <TextBlock Text="{Binding GlossarySummary}" Foreground="#4A5568" FontSize="12" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                <TextBlock Text="锁定的译法会优先注入 AI 提示词；增量术语页只会向这里写入新的、勾选过的术语。" Style="{StaticResource MutedText}" Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        <DataGrid Grid.Row="1" x:Name="GlossaryGrid" AutoGenerateColumns="False" CanUserAddRows="True" HeadersVisibility="Column">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="英文术语" Width="250" Binding="{Binding English, UpdateSourceTrigger=PropertyChanged}"/>
+                                <DataGridTextColumn Header="中文译法" Width="*" Binding="{Binding Translation, UpdateSourceTrigger=PropertyChanged}"/>
+                                <DataGridCheckBoxColumn Header="锁定" Width="76" Binding="{Binding Locked}"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                            <Button Content="恢复默认" Width="92" Margin="0,0,7,0" Click="ResetGlossary_Click"/>
+                            <Button Content="保存术语库" Width="104" Style="{StaticResource SuccessButton}" Click="SaveGlossary_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </TabItem>
+
+                <TabItem Header="角色风格">
+                    <Grid Margin="16">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <Border Grid.Row="0" Background="#F5F9FF" BorderBrush="#D9E7F8" BorderThickness="1" CornerRadius="10" Padding="11" Margin="0,0,0,10">
+                            <StackPanel>
+                                <TextBlock Text="角色说话风格" Style="{StaticResource SectionTitle}"/>
+                                <TextBlock Text="翻译对应角色台词时会自动带入这些风格提示。" Style="{StaticResource MutedText}" Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        <DataGrid Grid.Row="1" x:Name="CharacterGrid" AutoGenerateColumns="False" CanUserAddRows="True" HeadersVisibility="Column">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="角色名" Width="220" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}"/>
+                                <DataGridTextColumn Header="风格描述" Width="*" Binding="{Binding Style, UpdateSourceTrigger=PropertyChanged}"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                            <Button Content="恢复默认" Width="92" Margin="0,0,7,0" Click="ResetCharacters_Click"/>
+                            <Button Content="保存风格" Width="104" Style="{StaticResource SuccessButton}" Click="SaveCharacters_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </TabItem>
+
+                <TabItem Header="API 设置">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <Grid Margin="16">
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <Border Grid.Row="0" Background="#FFF8ED" BorderBrush="#F3E1BE" BorderThickness="1" CornerRadius="10" Padding="11" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="DeepSeek API 连接" Style="{StaticResource SectionTitle}"/>
+                                    <TextBlock Text="API Key 仅保存到本机 config/appsettings.json；不提交到 Git。" Style="{StaticResource MutedText}" Margin="0,3,0,0"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Grid Grid.Row="1">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="API 地址" Style="{StaticResource MutedText}" Margin="0,0,0,4"/>
+                                    <TextBox Text="{Binding ApiUrl, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="模型名" Style="{StaticResource MutedText}" Margin="0,0,0,4"/>
+                                    <TextBox Text="{Binding Model, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <StackPanel Grid.Row="2" Margin="0,12,0,0">
+                                <TextBlock Text="API Key（保存后写入本地配置文件，界面不显示明文）" Style="{StaticResource MutedText}" Margin="0,0,0,4"/>
+                                <PasswordBox x:Name="ApiKeyBox" FontFamily="Consolas" PasswordChanged="ApiKeyBox_PasswordChanged"
+                                             ToolTip="请勿把包含 API Key 的 appsettings.json 提交到 Git"/>
+                                <TextBlock Text="已保存的 Key 不会在界面上明文回显；修改后请点「保存 API 设置」。" Foreground="#718096" FontSize="11" Margin="0,4,0,0"/>
+                            </StackPanel>
+
+                            <Grid Grid.Row="3" Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0"><TextBlock Text="温度 (0~2)" Style="{StaticResource MutedText}" Margin="0,0,0,4"/><TextBox Text="{Binding Temperature, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+                                <StackPanel Grid.Column="2"><TextBlock Text="最大输出 Token" Style="{StaticResource MutedText}" Margin="0,0,0,4"/><TextBox Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+                                <StackPanel Grid.Column="4"><TextBlock Text="超时秒数" Style="{StaticResource MutedText}" Margin="0,0,0,4"/><TextBox Text="{Binding TimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+                            </Grid>
+
+            <StackPanel Grid.Row="4" Margin="0,14,0,0">
+                        <!-- 第8.89轮：Paratranz 远程术语同步 -->
+        <Border Background="#F3F7FF" BorderBrush="#CBD9F5" BorderThickness="1" CornerRadius="10" Padding="11" Margin="0,12,0,0">
+            <StackPanel>
+                <TextBlock Text="Paratranz 远程术语同步（可选；本地术语永远优先）" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <TextBlock Text="远程术语以“优先（未锁定）”并入本次运行的术语快照；同步只写自己的缓存，绝不修改 config/glossary.json。"
+                           Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                <StackPanel Orientation="Horizontal">
+                    <CheckBox x:Name="ParatranzEnabledBox" Content="启用 Paratranz 远程术语" VerticalAlignment="Center"
+                              IsChecked="{Binding ParatranzEnabled, Mode=TwoWay}" Checked="ParatranzEnabled_Changed" Unchecked="ParatranzEnabled_Changed"/>
+                    <TextBlock Text="项目 ID" VerticalAlignment="Center" Margin="16,0,0,0" Style="{StaticResource MutedText}"/>
+                    <TextBox Text="{Binding ParatranzProjectId, UpdateSourceTrigger=PropertyChanged}" Width="120" Margin="6,0,0,0"/>
+                    <Button x:Name="ParatranzSyncButton" Content="同步 Paratranz" Width="120" Margin="12,0,0,0" Click="SyncParatranz_Click"
+                            ToolTip="只读同步远程术语到 data/cache/paratranz_glossary.json（不写本地术语库）"/>
+                    <Button Content="保存 Paratranz 设置" Width="150" Margin="8,0,0,0" Click="SaveParatranz_Click"/>
+                </StackPanel>
+                <TextBlock x:Name="ParatranzStatusText" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="#3C4043" Text="未检测"/>
+            </StackPanel>
+        </Border>
+
+                                <TextBlock Text="思考模式（第8.75轮起为自适应）" Style="{StaticResource MutedText}" Margin="0,0,0,4"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <ComboBox ItemsSource="{Binding ThinkingModeOptions}" SelectedItem="{Binding SelectedThinkingMode}" ToolTip="自适应：普通英文关闭思考，源语言异常与 StoryData 开启思考；写入 deepSeek.thinkingMode"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <ComboBox ItemsSource="{Binding ReasoningEffortOptions}" SelectedItem="{Binding SelectedReasoningEffort}" ToolTip="仅在实际 Thinking ON 的请求生效（low / high / max；默认=服务端默认）"/>
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Text="旧版配置项 thinking=true/false 由 thinkingMode 取代（保存时会同步写入以兼容旧版本程序）。" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,6,0,10"/>
+                                <TextBlock Text="高级：批次配置（batch）" Style="{StaticResource MutedText}" Margin="0,4,0,4"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0"><TextBlock Text="每批最大条目数" Style="{StaticResource MutedText}" Margin="0,0,0,4"/><TextBox Text="{Binding BatchMaxItems, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+                                    <StackPanel Grid.Column="2"><TextBlock Text="每批最大字符数" Style="{StaticResource MutedText}" Margin="0,0,0,4"/><TextBox Text="{Binding BatchMaxCharacters, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+                                    <StackPanel Grid.Column="4"><TextBlock Text="目标输入 Token（预留，当前未生效）" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,4"/><TextBox Text="{Binding TargetInputTokens, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+                                    <StackPanel Grid.Column="6"><TextBlock Text="最大并发请求" Style="{StaticResource MutedText}" Margin="0,0,0,4"/><TextBox Text="{Binding MaxConcurrentRequests, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+                                </Grid>
+                                <TextBlock Text="注意：目标输入 Token 为保留配置，当前分批仍以“每批最大条目数 / 字符数”为准。" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,6,0,10"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
+                <Button Content="保存 API 设置" Width="132" Style="{StaticResource PrimaryButton}" Click="SaveApi_Click"/>
+                <Button x:Name="TestConnectionButton" Content="测试连接" Width="104" Margin="10,0,0,0" Click="TestConnection_Click"
+                        ToolTip="使用当前填写的地址 / Key / 模型发起一次极小请求，验证连通性与鉴权（不写翻译库与缓存）"/>
+            </StackPanel>
+            <TextBlock x:Name="TestConnectionResult" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="#3C4043" Text="未测试"/>
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </Border>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="关闭" Width="92" Click="Close_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

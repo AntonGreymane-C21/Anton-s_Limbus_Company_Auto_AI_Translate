@@ -1,0 +1,12 @@
+{
+  "//说明": "字段翻译规则：控制哪些 JSON 字段需要翻译、哪些跳过。",
+  "//重要": "StoryData 的 model 字段是韩文内部ID，禁止翻译（黑名单优先于白名单）",
+  "translatableFields": [
+    "name", "desc", "add", "min", "content",
+    "teller", "title", "place", "flavor",
+    "tooltip", "keyword", "text", "subtitle"
+  ],
+  "forbiddenFields": [
+    "id", "model"
+  ]
+}

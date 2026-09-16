@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LimbusTranslator.Cli/LimbusTranslator.Cli.csproj" />
+    <Project Path="src/LimbusTranslator.Core/LimbusTranslator.Core.csproj" />
+    <Project Path="src/LimbusTranslator.Infrastructure/LimbusTranslator.Infrastructure.csproj" />
+    <Project Path="src/LimbusTranslator.Wpf/LimbusTranslator.Wpf.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LimbusTranslator.Core.Tests/LimbusTranslator.Core.Tests.csproj" />
+    <Project Path="tests/LimbusTranslator.IntegrationTests/LimbusTranslator.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

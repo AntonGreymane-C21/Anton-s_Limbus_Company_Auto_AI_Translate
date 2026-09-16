@@ -1,0 +1,378 @@
+{
+  "Araya": {
+    "translation": "阿赖耶",
+    "locked": true
+  },
+  "Attack Power Down": {
+    "translation": "虚弱",
+    "locked": true
+  },
+  "Attack Power Up": {
+    "translation": "强壮",
+    "locked": true
+  },
+  "Bind": {
+    "translation": "束缚",
+    "locked": true
+  },
+  "Blade Lineage": {
+    "translation": "剑契组",
+    "locked": true
+  },
+  "Bleed": {
+    "translation": "流血",
+    "locked": true
+  },
+  "Bloodfiend": {
+    "translation": "血魔",
+    "locked": true
+  },
+  "Blunt": {
+    "translation": "打击",
+    "locked": true
+  },
+  "Burn": {
+    "translation": "烧伤",
+    "locked": true
+  },
+  "Charge": {
+    "translation": "充能",
+    "locked": true
+  },
+  "Clash": {
+    "translation": "拼点",
+    "locked": true
+  },
+  "Damage Down": {
+    "translation": "伤害弱化",
+    "locked": true
+  },
+  "Damage Up": {
+    "translation": "伤害强化",
+    "locked": true
+  },
+  "Dante": {
+    "translation": "但丁",
+    "locked": true
+  },
+  "Defense Level Down": {
+    "translation": "防御等级降低",
+    "locked": true
+  },
+  "Defense Level Up": {
+    "translation": "防御等级提升",
+    "locked": true
+  },
+  "Defense Power Down": {
+    "translation": "破绽",
+    "locked": true
+  },
+  "Defense Power Up": {
+    "translation": "忍耐",
+    "locked": true
+  },
+  "Don Quixote": {
+    "translation": "堂吉诃德",
+    "locked": true
+  },
+  "E.G.O": {
+    "translation": "E.G.O",
+    "locked": true
+  },
+  "Enkephalin": {
+    "translation": "脑啡肽",
+    "locked": true
+  },
+  "Envy": {
+    "translation": "嫉妒",
+    "locked": true
+  },
+  "Faust": {
+    "translation": "浮士德",
+    "locked": true
+  },
+  "Fixer": {
+    "translation": "收尾人",
+    "locked": true
+  },
+  "Fragile": {
+    "translation": "易损",
+    "locked": true
+  },
+  "Gesellschaft": {
+    "translation": "Gesellschaft",
+    "locked": true
+  },
+  "Gloom": {
+    "translation": "忧郁",
+    "locked": true
+  },
+  "Gluttony": {
+    "translation": "暴食",
+    "locked": true
+  },
+  "Gregor": {
+    "translation": "格里高尔",
+    "locked": true
+  },
+  "HP": {
+    "translation": "体力值",
+    "locked": true
+  },
+  "Haste": {
+    "translation": "迅捷",
+    "locked": true
+  },
+  "Heathcliff": {
+    "translation": "希斯克利夫",
+    "locked": true
+  },
+  "Hermann": {
+    "translation": "赫尔曼",
+    "locked": true
+  },
+  "Index": {
+    "translation": "食指",
+    "locked": true
+  },
+  "Ishmael": {
+    "translation": "以实玛利",
+    "locked": true
+  },
+  "Jia": {
+    "translation": "贾",
+    "locked": true
+  },
+  "Jia Huan": {
+    "translation": "贾环",
+    "locked": true
+  },
+  "Kromer": {
+    "translation": "克罗莫",
+    "locked": true
+  },
+  "Limbus Company": {
+    "translation": "边狱巴士",
+    "locked": true
+  },
+  "Lunacy": {
+    "translation": "狂气",
+    "locked": true
+  },
+  "Lust": {
+    "translation": "色欲",
+    "locked": true
+  },
+  "Manager": {
+    "translation": "管理人",
+    "locked": true
+  },
+  "Marked": {
+    "translation": "标记",
+    "locked": true
+  },
+  "Meursault": {
+    "translation": "默尔索",
+    "locked": true
+  },
+  "Middle": {
+    "translation": "中指",
+    "locked": true
+  },
+  "Mirror Dungeon": {
+    "translation": "镜面迷宫",
+    "locked": true
+  },
+  "Nursefather": {
+    "translation": "护父",
+    "locked": true
+  },
+  "Offense Level Down": {
+    "translation": "攻击等级降低",
+    "locked": true
+  },
+  "Offense Level Up": {
+    "translation": "攻击等级提升",
+    "locked": true
+  },
+  "Ongoing Damage": {
+    "translation": "持续损伤",
+    "locked": true
+  },
+  "Outis": {
+    "translation": "奥提斯",
+    "locked": true
+  },
+  "Paralyze": {
+    "translation": "麻痹",
+    "locked": true
+  },
+  "Philip": {
+    "translation": "菲利普",
+    "locked": true
+  },
+  "Pierce": {
+    "translation": "突刺",
+    "locked": true
+  },
+  "Poise": {
+    "translation": "呼吸法",
+    "locked": true
+  },
+  "Power Down": {
+    "translation": "威力降低",
+    "locked": true
+  },
+  "Power Up": {
+    "translation": "威力提升",
+    "locked": true
+  },
+  "Prescript": {
+    "translation": "指令",
+    "locked": true
+  },
+  "Pride": {
+    "translation": "傲慢",
+    "locked": true
+  },
+  "Protection": {
+    "translation": "守护",
+    "locked": true
+  },
+  "Rien": {
+    "translation": "里恩",
+    "locked": true
+  },
+  "Ring": {
+    "translation": "环指",
+    "locked": true
+  },
+  "Rodion": {
+    "translation": "罗佳",
+    "locked": true
+  },
+  "Rupture": {
+    "translation": "破裂",
+    "locked": true
+  },
+  "Ryoshu": {
+    "translation": "良秀",
+    "locked": true
+  },
+  "SP": {
+    "translation": "理智值",
+    "locked": true
+  },
+  "Shock": {
+    "translation": "感电",
+    "locked": true
+  },
+  "Siegfried": {
+    "translation": "齐格飞",
+    "locked": true
+  },
+  "Sinclair": {
+    "translation": "辛克莱",
+    "locked": true
+  },
+  "Sinking": {
+    "translation": "沉沦",
+    "locked": true
+  },
+  "Sinner": {
+    "translation": "罪人",
+    "locked": true
+  },
+  "Slash": {
+    "translation": "斩击",
+    "locked": true
+  },
+  "Sloth": {
+    "translation": "怠惰",
+    "locked": true
+  },
+  "Sonya": {
+    "translation": "索尼亚",
+    "locked": true
+  },
+  "Speed": {
+    "translation": "速度值",
+    "locked": true
+  },
+  "Stagger": {
+    "translation": "眩晕",
+    "locked": true
+  },
+  "Stun": {
+    "translation": "晕眩",
+    "locked": true
+  },
+  "Taunt": {
+    "translation": "嘲讽",
+    "locked": true
+  },
+  "Technology Liberation Alliance": {
+    "translation": "技术解放联盟",
+    "locked": true
+  },
+  "The Head": {
+    "translation": "头颅",
+    "locked": true
+  },
+  "Tremor": {
+    "translation": "震颤",
+    "locked": true
+  },
+  "Walpurgisnacht": {
+    "translation": "瓦尔普吉斯之夜",
+    "locked": true
+  },
+  "Wrath": {
+    "translation": "暴怒",
+    "locked": true
+  },
+  "Yi Sang": {
+    "translation": "李箱",
+    "locked": true
+  },
+  "그레고르": {
+    "translation": "格里高尔",
+    "locked": true
+  },
+  "돈키호테": {
+    "translation": "堂吉诃德",
+    "locked": true
+  },
+  "료슈": {
+    "translation": "良秀",
+    "locked": true
+  },
+  "뫼르소": {
+    "translation": "默尔索",
+    "locked": true
+  },
+  "싱클레어": {
+    "translation": "辛克莱",
+    "locked": true
+  },
+  "오티스": {
+    "translation": "奥提斯",
+    "locked": true
+  },
+  "이스마엘": {
+    "translation": "以实玛利",
+    "locked": true
+  },
+  "파우스트": {
+    "translation": "浮士德",
+    "locked": true
+  },
+  "필립": {
+    "translation": "菲利普",
+    "locked": true
+  },
+  "히스클리프": {
+    "translation": "希斯克利夫",
+    "locked": true
+  }
+}
