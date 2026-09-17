@@ -358,8 +358,29 @@
                                 <CheckBox Content="显示无需 AI 的文件" IsChecked="{Binding ShowFilesWithoutAi, Mode=TwoWay}" VerticalAlignment="Center" Margin="14,0,0,0" FontSize="11"/>
                             </StackPanel>
                             <TextBlock Grid.Row="1" Text="{Binding FileSelectionSummaryText}" Foreground="#31415C" FontWeight="SemiBold" Margin="3,0,0,7" TextWrapping="Wrap"/>
-                            <DataGrid Grid.Row="2" ItemsSource="{Binding FileTasks}" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False"
-                                      EnableRowVirtualization="True" SelectionMode="Single" RowHeight="26">
+                            <!-- 第9.0C.15轮：
+                                   ① SelectionMode=Extended + SelectionUnit=FullRow ⇒ Ctrl / Shift 多选与资源管理器一致；
+                                   ② VirtualizationPanel.VirtualizationMode=Standard ⇒ 关闭**容器回收**：
+                                      之前滚动时勾选框显示错乱，就是回收的行容器把上一行的 IsChecked 带到了新行；
+                                   ③ 右键菜单：对"选中行"批量设置本轮处理 / 不处理 / 反选（也可整范围全选/全不选/反选）。 -->
+                            <DataGrid Grid.Row="2" x:Name="FileTasksGrid" ItemsSource="{Binding FileTasks}" AutoGenerateColumns="False"
+                                      HeadersVisibility="Column" CanUserAddRows="False" RowHeight="26"
+                                      EnableRowVirtualization="True" VirtualizingPanel.VirtualizationMode="Standard"
+                                      SelectionMode="Extended" SelectionUnit="FullRow"
+                                      PreviewMouseRightButtonDown="FileTasksGrid_PreviewMouseRightButtonDown">
+                                <DataGrid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="本轮处理（选中的文件）" Click="MarkFilesSelected_Click"/>
+                                        <MenuItem Header="本轮不处理（选中的文件）" Click="MarkFilesUnselected_Click"/>
+                                        <MenuItem Header="反选（选中的文件）" Click="InvertFilesSelection_Click"/>
+                                        <Separator/>
+                                        <MenuItem Header="全选（当前任务范围）" Click="SelectAllFiles_Click"/>
+                                        <MenuItem Header="全不选（当前任务范围）" Click="SelectNoneFiles_Click"/>
+                                        <MenuItem Header="反选（当前任务范围）" Click="InvertFiles_Click"/>
+                                        <Separator/>
+                                        <MenuItem Header="提示：按住 Ctrl / Shift 可像资源管理器一样多选" IsEnabled="False"/>
+                                    </ContextMenu>
+                                </DataGrid.ContextMenu>
                                 <DataGrid.Columns>
                                     <DataGridTemplateColumn Header="本轮处理" Width="80" IsReadOnly="True">
                                         <DataGridTemplateColumn.CellTemplate>

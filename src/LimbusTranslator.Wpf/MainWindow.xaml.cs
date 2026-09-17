@@ -319,6 +319,63 @@ public partial class MainWindow : Window
         }
     }
 
+    // ───────── 第9.0C.15轮：文件列表的右键菜单 + Ctrl/Shift 多选 ─────────
+
+    /// <summary>
+    /// 右键落在**未选中**的行上时，先把选择切到该行（与资源管理器一致）；
+    /// 落在已选中的行上则保留当前多选集合，供右键菜单批量操作。
+    /// </summary>
+    private void FileTasksGrid_PreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.DataGrid grid)
+        {
+            return;
+        }
+
+        var row = FindRow(e.OriginalSource as System.Windows.DependencyObject);
+        if (row is null)
+        {
+            return;
+        }
+
+        if (!row.IsSelected)
+        {
+            grid.SelectedItems.Clear();
+            row.IsSelected = true;
+        }
+
+        grid.Focus();   // 让右键菜单里的动作有明确的作用对象
+    }
+
+    private static System.Windows.Controls.DataGridRow? FindRow(System.Windows.DependencyObject? source)
+    {
+        while (source is not null)
+        {
+            if (source is System.Windows.Controls.DataGridRow row)
+            {
+                return row;
+            }
+
+            source = System.Windows.Media.VisualTreeHelper.GetParent(source);
+        }
+
+        return null;
+    }
+
+    private List<LimbusTranslator.Wpf.ViewModels.FileTaskRow> SelectedFileRows()
+        => FileTasksGrid.SelectedItems
+            .OfType<LimbusTranslator.Wpf.ViewModels.FileTaskRow>()
+            .ToList();
+
+    private void MarkFilesSelected_Click(object sender, RoutedEventArgs e)
+        => _viewModel.MarkFilesSelected(SelectedFileRows());
+
+    private void MarkFilesUnselected_Click(object sender, RoutedEventArgs e)
+        => _viewModel.MarkFilesUnselected(SelectedFileRows());
+
+    private void InvertFilesSelection_Click(object sender, RoutedEventArgs e)
+        => _viewModel.InvertFilesSelection(SelectedFileRows());
+
     private void ScanTerms_Click(object sender, RoutedEventArgs e)
         => _viewModel.ScanIncrementalTerms();
 

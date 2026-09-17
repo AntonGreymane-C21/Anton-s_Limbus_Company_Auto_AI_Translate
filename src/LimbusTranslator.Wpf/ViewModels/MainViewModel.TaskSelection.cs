@@ -223,10 +223,44 @@ public sealed partial class MainViewModel
     {
         foreach (var row in FileTasks)
         {
-            row.IsSelected = _fileSelection.IsSelected(row.LogicalFile);
+            // 第9.0C.15轮：静默同步（不回写、不重算统计）——批量操作只需最后算一次，
+            // 否则 2000 行会触发 2000 次统计重算，并且容易与行虚拟化互相覆盖。
+            row.SetSelectedSilently(_fileSelection.IsSelected(row.LogicalFile));
         }
 
         UpdateFileSelectionStatistics();
+    }
+
+    // ───────── 第9.0C.15轮：右键菜单 / Ctrl+Shift 多选的批量操作 ─────────
+
+    /// <summary>右键菜单：把**选中行**标记为「本轮处理」（只影响这些文件，其余不动）。</summary>
+    public void MarkFilesSelected(IReadOnlyList<FileTaskRow> rows)
+        => ApplyRowSelection(rows, files => _fileSelection.SelectAll(files), "本轮处理");
+
+    /// <summary>右键菜单：把**选中行**标记为「本轮不处理」。</summary>
+    public void MarkFilesUnselected(IReadOnlyList<FileTaskRow> rows)
+        => ApplyRowSelection(rows, files => _fileSelection.SelectNone(files), "本轮不处理");
+
+    /// <summary>右键菜单：对**选中行**执行反选。</summary>
+    public void InvertFilesSelection(IReadOnlyList<FileTaskRow> rows)
+        => ApplyRowSelection(rows, files => _fileSelection.Invert(files), "反选");
+
+    private void ApplyRowSelection(
+        IReadOnlyList<FileTaskRow> rows,
+        Action<IEnumerable<string>> apply,
+        string action)
+    {
+        if (rows is null || rows.Count == 0)
+        {
+            StatusText = "请先在列表里选择文件（可按住 Ctrl / Shift 多选，或用右键菜单）";
+            Log($"[调试] 批量{action}未执行：没有选中任何行");
+            return;
+        }
+
+        var files = rows.Select(row => row.LogicalFile).ToList();
+        apply(files);
+        SyncRowsFromSelection();
+        Log($"[调试] 批量{action}：{files.Count} 个文件（当前范围已选择 {SelectedVisibleRows().Count}/{FileTasks.Count}）");
     }
 
     /// <summary>
@@ -328,6 +362,24 @@ public sealed class FileTaskRow : INotifyPropertyChanged
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
             OnSelectionChanged?.Invoke(this);
         }
+    }
+
+    /// <summary>
+    /// 静默同步勾选状态（第9.0C.15轮）：只刷新显示，**不回写 ViewModel、不重算统计**。
+    ///
+    /// 用于 <c>SyncRowsFromSelection</c> 批量同步（全选/全不选/反选/右键菜单）。
+    /// 旧实现逐行走 <see cref="IsSelected"/>，每行都会触发一次"回写 + 统计重算"，
+    /// 文件多时既慢又容易与行虚拟化竞争。
+    /// </summary>
+    public void SetSelectedSilently(bool value)
+    {
+        if (_isSelected == value)
+        {
+            return;
+        }
+
+        _isSelected = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
     }
 
     /// <inheritdoc />
