@@ -355,6 +355,10 @@
                                 <Button Content="全选" Padding="9,2" Margin="16,0,0,0" Click="SelectAllFiles_Click"/>
                                 <Button Content="全不选" Padding="9,2" Margin="6,0,0,0" Click="SelectNoneFiles_Click"/>
                                 <Button Content="反选" Padding="9,2" Margin="6,0,0,0" Click="InvertFiles_Click"/>
+                                <!-- 第9.0C.18轮：文件列表搜索（实时过滤；忽略大小写，按文件路径包含匹配） -->
+                                <TextBlock Text="搜索文件" Style="{StaticResource MutedText}" Margin="16,2,0,0"/>
+                                <TextBox Width="170" Margin="6,0,0,0" FontSize="12" Text="{Binding FileTaskSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="按文件路径过滤（忽略大小写），例如 storydata/s10 或 Bufs"/>
+                                <Button Content="清除" Padding="8,2" Margin="6,0,0,0" Click="ClearFileTaskSearch_Click" ToolTip="清除搜索（不会改变任何勾选状态）"/>
                                 <CheckBox Content="显示无需 AI 的文件" IsChecked="{Binding ShowFilesWithoutAi, Mode=TwoWay}" VerticalAlignment="Center" Margin="14,0,0,0" FontSize="11"/>
                             </StackPanel>
                             <TextBlock Grid.Row="1" Text="{Binding FileSelectionSummaryText}" Foreground="#31415C" FontWeight="SemiBold" Margin="3,0,0,7" TextWrapping="Wrap"/>

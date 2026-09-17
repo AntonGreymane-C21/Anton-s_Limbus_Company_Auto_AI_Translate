@@ -383,6 +383,10 @@ public partial class MainWindow : Window
     private void InvertFilesSelection_Click(object sender, RoutedEventArgs e)
         => _viewModel.InvertFilesSelection(SelectedFileRows());
 
+    /// <summary>第9.0C.18轮：清除文件列表搜索（只影响呈现，不改变勾选）。</summary>
+    private void ClearFileTaskSearch_Click(object sender, RoutedEventArgs e)
+        => _viewModel.ClearFileTaskSearch();
+
     private void ScanTerms_Click(object sender, RoutedEventArgs e)
         => _viewModel.ScanIncrementalTerms();
 

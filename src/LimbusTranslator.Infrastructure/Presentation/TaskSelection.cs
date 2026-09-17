@@ -190,6 +190,30 @@ public static class TaskSelection
             .ToList();
     }
 
+    /// <summary>
+    /// 第9.0C.18轮：**文件列表搜索匹配（唯一实现）**。
+    ///
+    /// 语义（可预测优先）：
+    ///   - 空搜索 ⇒ 全部命中；
+    ///   - 忽略大小写，按**逻辑文件相对路径**做包含匹配（例如 <c>storydata/s10</c>、<c>Bufs</c>）；
+    ///   - 搜索非空而文件路径为空 ⇒ 不命中；
+    ///   - 不做模糊/拼音/正则匹配（避免"看起来命中但说不清为什么"）。
+    /// </summary>
+    public static bool MatchesFileSearch(string? logicalFile, string? searchText)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            return true;
+        }
+
+        if (string.IsNullOrEmpty(logicalFile))
+        {
+            return false;
+        }
+
+        return logicalFile.Contains(searchText.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
     private static FileTaskSummary Build(
         string file,
         IReadOnlyDictionary<string, List<DiffEntry>> needFiles,

@@ -41,7 +41,7 @@ public sealed class RetranslateFailedEntriesTests
         var kind = ReviewFilter.Parse("只看「本批翻译失败」（可重译）");
 
         Assert.Equal(ReviewFilterKind.ProviderFailed, kind);
-        Assert.Equal(ReviewFilter.DisplayNames[^1], "只看「本批翻译失败」（可重译）");
+        Assert.Equal("只看「本批翻译失败」（可重译）", ReviewFilter.DisplayNames[^1]);
         Assert.Equal(ReviewFilter.DisplayNames.Count, Enum.GetValues<ReviewFilterKind>().Length);
     }
 

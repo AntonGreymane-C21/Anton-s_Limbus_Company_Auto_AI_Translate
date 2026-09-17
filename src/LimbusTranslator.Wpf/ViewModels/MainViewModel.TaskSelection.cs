@@ -63,6 +63,47 @@ public sealed partial class MainViewModel
         }
     }
 
+    private string _fileTaskSearchText = string.Empty;
+
+    /// <summary>
+    /// 第9.0C.18轮：**文件列表搜索框**（实时过滤）。
+    ///
+    /// 语义：忽略大小写、按逻辑文件相对路径包含匹配（例如 <c>storydata/s10</c>）；
+    /// 空字符串 ⇒ 显示全部；只影响呈现，**不改变任何选择状态**（未显示的文件仍是"本轮处理"）。
+    /// 过滤是纯内存操作（不重新分析、不写快照）。
+    /// </summary>
+    public string FileTaskSearchText
+    {
+        get => _fileTaskSearchText;
+        set
+        {
+            var text = value ?? string.Empty;
+            if (string.Equals(_fileTaskSearchText, text, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _fileTaskSearchText = text;
+            OnPropertyChanged();
+            ApplyTaskScopeFilter(log: false);
+        }
+    }
+
+    /// <summary>清除文件搜索（界面「清除」按钮）—— 不改变任何勾选状态。</summary>
+    public void ClearFileTaskSearch()
+    {
+        if (string.IsNullOrWhiteSpace(_fileTaskSearchText))
+        {
+            StatusText = "当前没有生效的文件搜索";
+            return;
+        }
+
+        _fileTaskSearchText = string.Empty;
+        OnPropertyChanged(nameof(FileTaskSearchText));
+        ApplyTaskScopeFilter(log: false);
+        Log($"[调试] 文件搜索已清除（当前范围 {FileTasks.Count} 个文件）");
+    }
+
     /// <summary>当前可见范围是否有可选文件（决定全选 / 全不选 / 反选按钮与提示）。</summary>
     public bool HasVisibleFileTasks => FileTasks.Count > 0;
 
@@ -120,7 +161,7 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>
-    /// 按当前任务范围（分类）过滤文件列表；**只影响呈现**，选择状态一律保留。
+    /// 按当前任务范围（分类）**与文件搜索**过滤文件列表；**只影响呈现**，选择状态一律保留。
     /// </summary>
     private void ApplyTaskScopeFilter(bool log)
     {
@@ -128,6 +169,8 @@ public sealed partial class MainViewModel
         var visible = _allFileTasks
             .Where(row => scope.Count == 0 || scope.Contains(TextCategoryHelper.FromRelativePath(row.LogicalFile)))
             .Where(row => row.RequiresAi || ShowFilesWithoutAi)
+            // 第9.0C.18轮：搜索过滤（唯一匹配实现放在 TaskSelection，便于单测）
+            .Where(row => TaskSelection.MatchesFileSearch(row.LogicalFile, _fileTaskSearchText))
             .OrderBy(row => row.LogicalFile, StringComparer.Ordinal)
             .ToList();
 
@@ -171,7 +214,11 @@ public sealed partial class MainViewModel
             $"已选择 {selected.Count} / {FileTasks.Count} 个文件\n"
             + $"本轮将翻译 {selectedUnits} 条"
             + (outputFiles is null ? string.Empty : $"\n输出将写出 {outputFiles} 个文件（含无需 AI、沿用既有译文的文件）")
-            + (skipped.Count > 0 ? $"\n本轮暂不处理：{skipped.Count} 个文件 / {skippedUnits} 条" : string.Empty);
+            + (skipped.Count > 0 ? $"\n本轮暂不处理：{skipped.Count} 个文件 / {skippedUnits} 条" : string.Empty)
+            // 第9.0C.18轮：搜索生效时明确说明"列表与批量按钮只作用于匹配结果"，避免误判
+            + (string.IsNullOrWhiteSpace(_fileTaskSearchText)
+                ? string.Empty
+                : $"\n（搜索「{_fileTaskSearchText.Trim()}」：仅显示匹配的 {FileTasks.Count} 个文件；全选/全不选/反选同样只作用于这些文件）");
 
         OnPropertyChanged(nameof(HasSelectedFiles));
         OnPropertyChanged(nameof(HasVisibleFileTasks));
