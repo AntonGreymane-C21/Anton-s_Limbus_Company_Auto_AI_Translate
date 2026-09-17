@@ -20,8 +20,18 @@ public sealed class CategoryStat : INotifyPropertyChanged
     /// <summary>该分类总文件数</summary>
     public int TotalFileCount { get; set; }
 
-    /// <summary>该分类需要汉化的文件数（新增+缺失汉化+修改）</summary>
+    /// <summary>该分类需要汉化的文件数（= 生产计划里"需要 AI"的逻辑文件数；与「需要处理的文件」列表同口径）</summary>
     public int NeedTranslateFileCount { get; set; }
+
+    /// <summary>
+    /// 第9.0C.23轮：文件级 Diff 有变化、但计划判定**不需要 AI** 的文件数
+    /// （典型：仅英文 / 日文参考变化、韩文未变 ⇒ 本轮继承）。
+    /// </summary>
+    public int ReferenceOnlyFileCount { get; set; }
+
+    /// <summary>UI 提示文本：有"仅参考变化"时才显示（第9.0C.23轮）。</summary>
+    public string ReferenceOnlyNote =>
+        ReferenceOnlyFileCount > 0 ? $"｜仅参考变化 {ReferenceOnlyFileCount}" : string.Empty;
 
     /// <summary>该分类已就绪文件数（未变化，已有汉化，无需处理）</summary>
     public int ReadyCount => TotalFileCount - NeedTranslateFileCount;

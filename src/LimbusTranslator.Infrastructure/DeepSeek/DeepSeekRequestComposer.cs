@@ -119,7 +119,7 @@ public static class DeepSeekRequestComposer
         TextCategory.StoryData =>
             "本文本属于剧情内容：注意人物语气、前后文连贯与叙事节奏，使用自然的中文台词表达，"
             + "不遗漏任何语义，不添加原文没有的信息。",
-        TextCategory.General =>
+        TextCategory.General or TextCategory.RpgSystem =>
             "本文本属于界面 / 技能 / 道具等说明性内容：表达简洁准确，术语与数值格式必须保持一致，"
             + "不要文学化扩写，不要增加语气词。",
         TextCategory.PersonalityVoiceDlg or TextCategory.EGOVoiceDig or TextCategory.BattleAnnouncerDlg =>

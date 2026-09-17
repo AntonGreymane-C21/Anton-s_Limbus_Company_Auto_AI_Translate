@@ -12,6 +12,7 @@ using LimbusTranslator.Infrastructure.CharacterStyle;
 using LimbusTranslator.Infrastructure.DeepSeek;
 using LimbusTranslator.Infrastructure.Glossary;
 using LimbusTranslator.Infrastructure.Persistence;
+using LimbusTranslator.Infrastructure.Presentation;
 using LimbusTranslator.Infrastructure.Snapshots;
 using LimbusTranslator.Core.Release;
 using LimbusTranslator.Infrastructure.Release;
@@ -508,50 +509,45 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             }
         }
     }
-
     /// <summary>
-    /// 按分类统计文件数（总文件 + 需翻译文件），填充 CategoryStats。
+    /// 按分类统计文件数（总文件 + 需翻译文件 + 仅参考变化文件），填充 CategoryStats。
+    ///
+    /// 第9.0C.23轮：**统计与「需要处理的文件」同源**（都来自生产计划）——
+    /// 修复真实反馈"播报员 需译 1，但文件列表里没有这个文件"
+    ///（旧实现用文件级英文 Diff 的 Kind != Unchanged 计数；KR 权威模式下，韩文未变 ⇒ 继承 ⇒ 不需要 AI）。
+    /// 计划不可用时回退到文件级 Diff 口径，保证界面不空。
     /// </summary>
     private void BuildCategoryStats()
     {
         CategoryStats.Clear();
 
-        // 按分类分组（用全部文件，含未变化）
-        var groups = _categorizedFileEntries
-            .GroupBy(f => TextCategoryHelper.FromRelativePath(f.EnglishPath))
-            .OrderBy(g => g.Key)
-            .ToList();
+        var plan = _lastPlan;
+        var rows = plan is null
+            ? BuildFallbackCategoryStats()
+            : CategoryStatistics.Build(plan, BuildFileDiffKindMap());
 
-        foreach (var group in groups)
+        foreach (var row in rows)
         {
-            var needCount = group.Count(f => f.Kind != FileDiffKind.Unchanged);
             CategoryStats.Add(new CategoryStat
             {
-                Category = group.Key,
-                DisplayName = TextCategoryHelper.GetDisplayName(group.Key),
-                TotalFileCount = group.Count(),
-                NeedTranslateFileCount = needCount,
-                IsSelected = needCount > 0,
+                Category = row.Category,
+                DisplayName = row.DisplayName,
+                TotalFileCount = row.TotalFileCount,
+                NeedTranslateFileCount = row.NeedTranslateFileCount,
+                ReferenceOnlyFileCount = row.ReferenceOnlyFileCount,
+                IsSelected = row.NeedTranslateFileCount > 0,
             });
         }
 
-        // 显示所有 6 个分类（无文件时 TotalCount=0）
-        foreach (TextCategory category in Enum.GetValues<TextCategory>())
-        {
-            if (!CategoryStats.Any(c => c.Category == category))
-            {
-                CategoryStats.Add(new CategoryStat
-                {
-                    Category = category,
-                    DisplayName = TextCategoryHelper.GetDisplayName(category),
-                    TotalFileCount = 0,
-                    NeedTranslateFileCount = 0,
-                    IsSelected = false,
-                });
-            }
-        }
+        Log($"[调试] 分类统计（与文件列表同源）: {string.Join(", ", CategoryStats.Select(c => $"{c.DisplayName}(总{c.TotalFileCount}/需译{c.NeedTranslateFileCount}{c.ReferenceOnlyNote})"))}");
 
-        Log($"[调试] 分类统计: {string.Join(", ", CategoryStats.Select(c => $"{c.DisplayName}(总{c.TotalFileCount}/需译{c.NeedTranslateFileCount})"))}");
+        // 第9.0C.23轮：向用户解释"某些文件为什么没出现在需要处理的文件里"
+        var referenceOnlyTotal = CategoryStats.Sum(c => c.ReferenceOnlyFileCount);
+        if (referenceOnlyTotal > 0)
+        {
+            Log($"[调试] 提示：{referenceOnlyTotal} 个文件的英文/日文参考发生变化、但韩文原文未变 ⇒ 本轮按继承处理（不会调用 AI）；"
+                + "想查看它们请勾选「显示无需 AI 的文件」。");
+        }
 
         // 第9.0C.3轮：分类（任务范围）勾选变化后立即联动文件列表。
         // 回调在统计构建完成后再挂上，避免构建过程中反复触发过滤。
@@ -559,6 +555,38 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             stat.SelectionChanged = OnTaskScopeChanged;
         }
+    }
+
+    /// <summary>第9.0C.23轮：文件级 Diff 类型（逻辑路径 → 类型），仅用于"仅参考变化"统计。</summary>
+    private IReadOnlyDictionary<string, FileDiffKind> BuildFileDiffKindMap()
+    {
+        var map = new Dictionary<string, FileDiffKind>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in _categorizedFileEntries)
+        {
+            map[file.LogicalPath] = file.Kind;
+        }
+
+        return map;
+    }
+
+    /// <summary>第9.0C.23轮：没有生产计划时的回退统计（旧的文件级 Diff 口径）。</summary>
+    private IReadOnlyList<CategoryStatRow> BuildFallbackCategoryStats()
+    {
+        var rows = new List<CategoryStatRow>();
+        foreach (var category in Enum.GetValues<TextCategory>())
+        {
+            var files = _categorizedFileEntries
+                .Where(file => TextCategoryHelper.FromRelativePath(file.EnglishPath) == category)
+                .ToList();
+            rows.Add(new CategoryStatRow(
+                category,
+                TextCategoryHelper.GetDisplayName(category),
+                files.Count,
+                files.Count(file => file.Kind != FileDiffKind.Unchanged),
+                0));
+        }
+
+        return rows;
     }
 
     /// <summary>

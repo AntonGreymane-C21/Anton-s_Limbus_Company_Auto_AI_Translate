@@ -340,6 +340,8 @@
                                                     <TextBlock Text="{Binding NeedTranslateFileCount}" Foreground="#A6425D" FontWeight="Bold" FontSize="11"/>
                                                     <TextBlock Text=" / 总 " Foreground="#718096" FontSize="11"/>
                                                     <TextBlock Text="{Binding TotalFileCount}" Foreground="#53637B" FontWeight="Bold" FontSize="11"/>
+                                                    <!-- 第9.0C.23轮：有"仅参考变化"的文件时解释它为什么不在需要处理的文件里 -->
+                                                    <TextBlock Text="{Binding ReferenceOnlyNote}" Foreground="#9A5A0D" FontSize="11" Margin="4,0,0,0"/>
                                                 </StackPanel>
                                             </Border>
                                         </DataTemplate>
