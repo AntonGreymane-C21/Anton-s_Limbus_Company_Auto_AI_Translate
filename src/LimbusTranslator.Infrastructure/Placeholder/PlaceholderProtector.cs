@@ -31,13 +31,59 @@ public sealed class PlaceholderValidation
     /// <summary>未知的标记（AI 自己造的）</summary>
     public required IReadOnlyList<string> Unknown { get; init; }
 
-    public string Describe()
+    /// <summary>
+    /// 人类可读描述。
+    ///
+    /// 第9.0C.14轮：传入 <paramref name="source"/> 时，把内部标记 <c>__LT_PH_0001__</c> 映射回**真实占位符**
+    /// （例如 <c>&lt;i&gt;×1、&lt;/i&gt;×1、{0}</c>）—— 旧实现直接把内部标记名写给用户看，
+    /// 报告里出现「缺失 __LT_PH_0001__,__LT_PH_0002__」对人类毫无意义。
+    /// <paramref name="source"/> 为 null 时退化为标记名（保持旧行为，供没有映射表的调用点使用）。
+    /// </summary>
+    public string Describe(PlaceholderProtectedText? source = null)
     {
         var parts = new List<string>();
-        if (Missing.Count > 0) parts.Add($"缺失 {string.Join(",", Missing)}");
-        if (Duplicated.Count > 0) parts.Add($"重复 {string.Join(",", Duplicated)}");
-        if (Unknown.Count > 0) parts.Add($"未知 {string.Join(",", Unknown)}");
+        if (Missing.Count > 0) parts.Add($"缺失 {DescribeMarkers(Missing, source)}");
+        if (Duplicated.Count > 0) parts.Add($"重复 {DescribeMarkers(Duplicated, source)}");
+        if (Unknown.Count > 0) parts.Add($"未知 {DescribeMarkers(Unknown, source)}");
         return parts.Count == 0 ? "通过" : string.Join("；", parts);
+    }
+
+    /// <summary>
+    /// 标记列表 → 真实占位符列表（同一占位符出现多次时写作 <c>&lt;i&gt;×2</c>）。
+    /// </summary>
+    public static string DescribeMarkers(IReadOnlyList<string> markers, PlaceholderProtectedText? source)
+    {
+        if (markers.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        if (source is null)
+        {
+            return string.Join(",", markers);
+        }
+
+        var names = markers
+            .Select(marker => MarkerToOriginal(marker, source) ?? marker)
+            .ToList();
+        var grouped = names
+            .GroupBy(name => name, StringComparer.Ordinal)
+            .Select(group => group.Count() > 1 ? $"{group.Key}×{group.Count()}" : group.Key);
+        return string.Join("、", grouped);
+    }
+
+    /// <summary>标记 <c>__LT_PH_NNNN__</c> → 原始占位符（越界或格式不符返回 null）。</summary>
+    public static string? MarkerToOriginal(string marker, PlaceholderProtectedText source)
+    {
+        if (source is null || string.IsNullOrEmpty(marker))
+        {
+            return null;
+        }
+
+        var digits = marker.Replace("__LT_PH_", string.Empty).Replace("__", string.Empty);
+        return int.TryParse(digits, out var index) && index >= 1 && index <= source.OriginalPlaceholders.Count
+            ? source.OriginalPlaceholders[index - 1]
+            : null;
     }
 }
 
@@ -115,7 +161,7 @@ public sealed class PlaceholderProtector
         var validation = Validate(translatedText, protectedSource);
         if (!validation.IsValid)
         {
-            throw new InvalidOperationException($"[错误] Placeholder 校验失败: {validation.Describe()}");
+            throw new InvalidOperationException($"[错误] Placeholder 校验失败: {validation.Describe(protectedSource)}");
         }
 
         var result = translatedText;
@@ -128,8 +174,15 @@ public sealed class PlaceholderProtector
     }
 
     /// <summary>
-    /// 宽容恢复：校验失败时不抛异常，尽量恢复标记；
-    /// 对确实缺失的标记，在文本末尾补回对应占位符（避免 AI 损坏占位符导致数据缺失）。
+    /// 宽容恢复：校验失败时不抛异常，尽量恢复标记。
+    ///
+    /// 第9.0C.14轮修复：旧实现在标记缺失时**一律把原始占位符追加到句尾** ——
+    /// 模型漏掉 <c>&lt;i&gt;</c> 时会在中文句末多出 <c>&lt;i&gt;</c>，漏掉 <c>{0}</c> 时数字占位符会被扔到句尾
+    ///（游戏里显示位置直接错位）。现在按类型就位：
+    ///   - **起始标签**（<c>&lt;i&gt;</c> / <c>&lt;color=…&gt;</c>）⇒ 补到**最前面**；
+    ///   - **结束标签**（<c>&lt;/i&gt;</c> / <c>&lt;/color&gt;</c>）⇒ 补到**最后面**；
+    ///   - 其它（<c>{0}</c> / <c>%s</c> / <c>\n</c> / 自闭合标签）⇒ 仍然补到末尾（无法推断语义位置，至少不丢数据）。
+    /// 无论哪种情况，只要发生过缺失，调用方仍会把该条目标为待人工审核。
     /// </summary>
     /// <returns>(恢复后的文本, 校验结果)</returns>
     public (string Text, PlaceholderValidation Validation) RestoreLenient(
@@ -145,21 +198,49 @@ public sealed class PlaceholderProtector
             result = result.Replace(marker, protectedSource.OriginalPlaceholders[i]);
         }
 
-        // 缺失的标记：把原始占位符追加到末尾，保证关键数据不丢
         if (!validation.IsValid)
         {
+            var prefix = new StringBuilder();
+            var suffix = new StringBuilder();
             foreach (var missing in validation.Missing)
             {
-                if (int.TryParse(missing.Replace("__LT_PH_", string.Empty).Replace("__", string.Empty), out var idx)
-                    && idx >= 1 && idx <= protectedSource.OriginalPlaceholders.Count)
+                var original = PlaceholderValidation.MarkerToOriginal(missing, protectedSource);
+                if (string.IsNullOrEmpty(original))
                 {
-                    result += protectedSource.OriginalPlaceholders[idx - 1];
+                    continue;
                 }
+
+                if (IsOpeningTag(original))
+                {
+                    prefix.Append(original);
+                }
+                else
+                {
+                    suffix.Append(original);
+                }
+            }
+
+            if (prefix.Length > 0)
+            {
+                result = prefix + result;
+            }
+
+            if (suffix.Length > 0)
+            {
+                result += suffix;
             }
         }
 
         return (result, validation);
     }
+
+    /// <summary>是否为起始标签（<c>&lt;i&gt;</c>、<c>&lt;color=…&gt;</c>）；自闭合 <c>&lt;br/&gt;</c> 不算。</summary>
+    private static bool IsOpeningTag(string value)
+        => value.Length >= 3
+           && value[0] == '<'
+           && value[1] != '/'
+           && !value.EndsWith("/>", StringComparison.Ordinal)
+           && char.IsLetter(value[1]);
 
     /// <summary>
     /// 严格校验（文档 §30）：数量一致、编号一致、不缺失、不重复、无未知。

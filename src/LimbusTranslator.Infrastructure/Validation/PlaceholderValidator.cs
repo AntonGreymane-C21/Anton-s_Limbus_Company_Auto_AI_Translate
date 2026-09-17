@@ -73,10 +73,13 @@ public sealed class PlaceholderValidator : ITranslationValidator
         var validation = _protector.Validate(protectedTranslation, protectedSource);
 
         // 方括号类（[NOTE] / [CharacterName]）在历史译文里经常被本地化（[介绍] / [注意]），
-        // 它不是运行期格式占位符，按“宁可漏报”原则不作为占位符缺失/多余判定。
-        // 真正的富文本标签丢失由 TagValidator 负责（Error）。
-        var filteredMissing = validation.Missing.Where(m => !IsBracketMarker(m, protectedSource)).ToList();
-        var filteredDuplicated = validation.Duplicated.Where(m => !IsBracketMarker(m, protectedSource)).ToList();
+        // 它不是运行期格式占位符，按"宁可漏报"原则不作为占位符缺失/多余判定。
+        //
+        // 第9.0C.14轮（去重）：**富文本标签**（<i> / </i> / <color=…> / <size=…>）同样交给 TagValidator 负责。
+        // 真实数据里 3289 条"历史继承结构问题"绝大多数就是同一个标签丢失被两套校验各报一次；
+        // 保护本身不变（标签仍被 PlaceholderProtector 保护，模型改不坏它），只是**校验口径不重复**。
+        var filteredMissing = validation.Missing.Where(m => !IsHandledByOtherValidator(m, protectedSource)).ToList();
+        var filteredDuplicated = validation.Duplicated.Where(m => !IsHandledByOtherValidator(m, protectedSource)).ToList();
         var filteredUnknown = validation.Unknown.ToList();
 
         if (filteredMissing.Count > 0 || filteredDuplicated.Count > 0 || filteredUnknown.Count > 0)
@@ -84,17 +87,18 @@ public sealed class PlaceholderValidator : ITranslationValidator
             var parts = new List<string>();
             if (filteredMissing.Count > 0)
             {
-                parts.Add($"缺失 {string.Join(",", filteredMissing)}");
+                // 第9.0C.14轮：把内部标记 __LT_PH_0001__ 映射回真实占位符（{0} / %s / \n …）
+                parts.Add($"缺失 {PlaceholderValidation.DescribeMarkers(filteredMissing, protectedSource)}");
             }
             if (filteredDuplicated.Count > 0)
             {
-                parts.Add($"重复 {string.Join(",", filteredDuplicated)}");
+                parts.Add($"重复 {PlaceholderValidation.DescribeMarkers(filteredDuplicated, protectedSource)}");
             }
             if (filteredUnknown.Count > 0)
             {
-                parts.Add($"未知 {string.Join(",", filteredUnknown)}");
+                parts.Add($"未知 {string.Join("、", filteredUnknown)}");
             }
-            issues.Add(Error(context, "Placeholder 校验失败: " + string.Join("；", parts)));
+            issues.Add(Error(context, "占位符校验失败: " + string.Join("；", parts)));
         }
 
         // 3) 数量级校验：Validate 无法表达“占位符出现次数减少”（仍存在但不完整）
@@ -105,7 +109,7 @@ public sealed class PlaceholderValidator : ITranslationValidator
 
         foreach (var pair in sourceCounts)
         {
-            if (IsBracketLike(pair.Key))
+            if (IsHandledByOtherValue(pair.Key))
             {
                 continue;
             }
@@ -128,7 +132,7 @@ public sealed class PlaceholderValidator : ITranslationValidator
         foreach (var pair in targetCounts)
         {
             sourceCounts.TryGetValue(pair.Key, out var sourceCount);
-            if (pair.Value <= sourceCount || IsBracketLike(pair.Key))
+            if (pair.Value <= sourceCount || IsHandledByOtherValue(pair.Key))
             {
                 continue;
             }
@@ -173,16 +177,18 @@ public sealed class PlaceholderValidator : ITranslationValidator
     private static bool IsBracketLike(string value)
         => value.Length >= 2 && value[0] == '[' && value[^1] == ']';
 
-    /// <summary>标记 __LT_PH_NNNN__ 对应的原始占位符是否是方括号类。</summary>
-    private static bool IsBracketMarker(string marker, PlaceholderProtectedText protectedSource)
-    {
-        var digits = marker.Replace("__LT_PH_", string.Empty).Replace("__", string.Empty);
-        if (!int.TryParse(digits, out var index) || index < 1 || index > protectedSource.OriginalPlaceholders.Count)
-        {
-            return false;
-        }
+    /// <summary>富文本标签（<c>&lt;i&gt;</c> / <c>&lt;/i&gt;</c> / <c>&lt;color=…&gt;</c>）—— 由 TagValidator 负责。</summary>
+    private static bool IsTagLike(string value)
+        => value.Length >= 3 && value[0] == '<' && value[^1] == '>';
 
-        return IsBracketLike(protectedSource.OriginalPlaceholders[index - 1]);
+    /// <summary>该值是否由其它校验器负责（方括号类 / 富文本标签）。</summary>
+    private static bool IsHandledByOtherValue(string value) => IsBracketLike(value) || IsTagLike(value);
+
+    /// <summary>标记 __LT_PH_NNNN__ 对应的原始占位符是否由其它校验器负责。</summary>
+    private static bool IsHandledByOtherValidator(string marker, PlaceholderProtectedText protectedSource)
+    {
+        var original = PlaceholderValidation.MarkerToOriginal(marker, protectedSource);
+        return original is not null && IsHandledByOtherValue(original);
     }
 
     private static string Truncate(string value)

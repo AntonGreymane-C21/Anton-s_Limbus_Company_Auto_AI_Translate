@@ -391,7 +391,7 @@ public static class ReleaseGate
             return Kind switch
             {
                 ReleaseGateReasonKinds.HistoricalInheritedError =>
-                    $"发现 {Count} 条历史继承译文存在结构安全差异（{Code}）。"
+                    $"发现 {Count} 条历史继承译文与当前源文存在结构差异（{Code}）。常见原因：旧汉化缺少源文的富文本标签或格式占位符，不是本次翻译损坏；请抽查后再决定是否修复。"
                     + "这些问题在本次 Validator 上线前已经存在，建议审核后再部署。",
                 ReleaseGateReasonKinds.ReviewedHardError =>
                     $"{scope}存在 {Count} 条{level}（{Code}）：人工审核不能跳过结构安全校验。",

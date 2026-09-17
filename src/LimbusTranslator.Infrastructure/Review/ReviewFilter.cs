@@ -39,6 +39,16 @@ public enum ReviewFilterKind
 
     /// <summary>默认工作集：本次 AI + NeedsReview（排除直通/继承）</summary>
     DefaultWorkSet,
+
+    // ── 第9.0C.14轮：按"问题类型"一键筛选（用户反馈：想集中修某一类问题） ──
+    /// <summary>译文中仍有日文假名残留</summary>
+    JapaneseResidue,
+
+    /// <summary>译文为空</summary>
+    EmptyTranslation,
+
+    /// <summary>缺少韩文原文（仅 KR 三模式）</summary>
+    CanonicalKoreanMissing,
 }
 
 /// <summary>
@@ -65,6 +75,10 @@ public static class ReviewFilter
         "韩文异常源",
         "只看 Passthrough",
         "默认工作集（AI + NeedsReview）",
+        // 第9.0C.14轮：按问题类型（顺序必须与枚举一致）
+        "只看 JAPANESE_RESIDUE（日文假名残留）",
+        "只看 EMPTY_TRANSLATION（空译文）",
+        "只看 CANONICAL_KOREAN_SOURCE_MISSING（缺韩文原文）",
     };
 
     /// <summary>显示文本 → 筛选类型（无法识别时按"全部"处理）。</summary>
@@ -105,6 +119,10 @@ public static class ReviewFilter
             // 默认工作集：AI 结果且需要人工确认（直通/继承不进入）
             ReviewFilterKind.DefaultWorkSet => entry.Provenance == TranslationSource.AI
                                                && (entry.NeedsReview || entry.ValidationIssues.Count > 0),
+            // 第9.0C.14轮：按问题类型
+            ReviewFilterKind.JapaneseResidue => HasCode(entry, ValidationIssueCodes.JapaneseResidue),
+            ReviewFilterKind.EmptyTranslation => HasCode(entry, ValidationIssueCodes.EmptyTranslation),
+            ReviewFilterKind.CanonicalKoreanMissing => HasCode(entry, ValidationIssueCodes.CanonicalKoreanSourceMissing),
             _ => true,
         };
     }

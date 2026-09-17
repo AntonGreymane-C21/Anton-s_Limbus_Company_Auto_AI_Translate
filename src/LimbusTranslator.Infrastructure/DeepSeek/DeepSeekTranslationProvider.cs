@@ -341,7 +341,7 @@ public sealed class DeepSeekTranslationProvider : ITranslationProvider, IThinkin
                         if (!lenient.Validation.IsValid)
                         {
                             needsReview = true;
-                            reviewReason = $"Placeholder 校验异常: {lenient.Validation.Describe()}";
+                            reviewReason = $"Placeholder 校验异常: {lenient.Validation.Describe(protectedSource)}";
                             placeholderFailed = true;
                             // 第2轮：宽容恢复也要保留结构化 Issue（Pipeline 会合并进报告）
                             issues.Add(new ValidationIssue
@@ -351,7 +351,7 @@ public sealed class DeepSeekTranslationProvider : ITranslationProvider, IThinkin
                                 Severity = ValidationSeverity.Error,
                                 Category = ValidationCategory.Placeholder,
                                 Validator = nameof(PlaceholderProtector),
-                                Message = $"Placeholder 宽容恢复: {lenient.Validation.Describe()}",
+                                Message = $"Placeholder 宽容恢复: {lenient.Validation.Describe(protectedSource)}",
                             });
                         }
                     }
@@ -654,7 +654,7 @@ public sealed class DeepSeekTranslationProvider : ITranslationProvider, IThinkin
                     if (!lenient.Validation.IsValid)
                     {
                         needsReview = true;
-                        reviewReason = $"Placeholder 校验异常: {lenient.Validation.Describe()}";
+                        reviewReason = $"Placeholder 校验异常: {lenient.Validation.Describe(protectedSource)}";
                         placeholderFailed = true;
                         issues.Add(new ValidationIssue
                         {
@@ -663,7 +663,7 @@ public sealed class DeepSeekTranslationProvider : ITranslationProvider, IThinkin
                             Severity = ValidationSeverity.Error,
                             Category = ValidationCategory.Placeholder,
                             Validator = nameof(PlaceholderProtector),
-                            Message = $"Placeholder 宽容恢复: {lenient.Validation.Describe()}",
+                            Message = $"Placeholder 宽容恢复: {lenient.Validation.Describe(protectedSource)}",
                         });
                     }
 
