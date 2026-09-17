@@ -21,6 +21,27 @@ public sealed partial class MainViewModel
     private string _reviewJumpFileText = string.Empty;
     private string _reviewPagerText = "（还没有可审核的条目）";
 
+    /// <summary>
+    /// 第9.0C.17轮：当前是否存在「本批翻译失败」的条目（决定「重译翻译失败的条目」按钮是否可用）。
+    /// 判据是结构化标记 <c>DiffEntry.ProviderBatchFailed</c>（不解析 ReviewReason 文案）。
+    /// </summary>
+    public bool CanRetranslateFailed
+    {
+        get => _canRetranslateFailed;
+        private set
+        {
+            if (_canRetranslateFailed == value)
+            {
+                return;
+            }
+
+            _canRetranslateFailed = value;
+            OnPropertyChanged();
+        }
+    }
+
+    private bool _canRetranslateFailed;
+
     /// <summary>每页条目数（5000）。</summary>
     public int ReviewPageSize => ReviewPaging.DefaultPageSize;
 
@@ -69,6 +90,8 @@ public sealed partial class MainViewModel
         }
 
         _reviewPageIndex = 1;
+        // 第9.0C.17轮：列表来源变化时同步「重译失败条目」按钮的可用性
+        CanRetranslateFailed = entries?.Any(entry => entry.ProviderBatchFailed) == true;
         ApplyReviewFilter();
     }
 

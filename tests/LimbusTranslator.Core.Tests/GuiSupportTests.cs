@@ -113,7 +113,9 @@ public class GuiSupportTests : IDisposable
         // 第9.0C.14轮：按问题类型新增 3 项（同样追加在末尾），DefaultWorkSet 不再是最后一项
         Assert.Equal(ReviewFilterKind.JapaneseResidue, ReviewFilter.Parse("只看 JAPANESE_RESIDUE（日文假名残留）"));
         Assert.Equal(ReviewFilterKind.EmptyTranslation, ReviewFilter.Parse("只看 EMPTY_TRANSLATION（空译文）"));
-        Assert.Equal(ReviewFilterKind.CanonicalKoreanMissing, ReviewFilter.Parse(ReviewFilter.DisplayNames[^1]));
+        Assert.Equal(ReviewFilterKind.CanonicalKoreanMissing, ReviewFilter.Parse("只看 CANONICAL_KOREAN_SOURCE_MISSING（缺韩文原文）"));
+        // 第9.0C.17轮：新增「只看『本批翻译失败』（可重译）」⇒ ProviderFailed 成为最后一项
+        Assert.Equal(ReviewFilterKind.ProviderFailed, ReviewFilter.Parse(ReviewFilter.DisplayNames[^1]));
         Assert.Equal(ReviewFilterKind.Modified, ReviewFilter.Parse("只看 Modified"));
         Assert.Equal(ReviewFilterKind.All, ReviewFilter.Parse("不存在的筛选"));
         Assert.Equal(ReviewFilter.DisplayNames.Count, Enum.GetValues<ReviewFilterKind>().Length);

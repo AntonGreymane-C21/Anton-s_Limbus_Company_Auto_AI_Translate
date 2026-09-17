@@ -578,6 +578,8 @@
                                     <Button Content="审核后重新输出" Style="{StaticResource TaskButton}" Background="#2E6BDE" Foreground="White" BorderBrush="#2E6BDE" Margin="0,0,7,0" Click="RegenerateOutput_Click"
                             IsEnabled="{Binding CanGenerateOutputAction, Mode=OneWay}"/>
                                     <Button Content="从缓存恢复 output" Style="{StaticResource TaskButton}" Background="#F2EEFC" Foreground="#6741B4" BorderBrush="#D9CEF6" Click="RecoverOutput_Click"/>
+                                <!-- 第9.0C.17轮：只重译「本批翻译失败」的条目（批次彻底失败 ⇒ 没有译文） -->
+                                <Button Content="重译翻译失败的条目" Style="{StaticResource TaskButton}" Background="#FFF4E5" Foreground="#8A5A00" BorderBrush="#F0D9B5" Margin="7,0,0,0" Click="RetranslateFailedEntries_Click" IsEnabled="{Binding CanRetranslateFailed}" ToolTip="只重新翻译『本批翻译失败』（没有拿到译文）的条目；其余条目与文件保持不动。会调用 API。"/>
                                 </StackPanel>
                             </Grid>
                         </Border>

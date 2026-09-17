@@ -49,6 +49,12 @@ public enum ReviewFilterKind
 
     /// <summary>缺少韩文原文（仅 KR 三模式）</summary>
     CanonicalKoreanMissing,
+
+    /// <summary>
+    /// 第9.0C.17轮：「本批翻译失败」的条目（批次彻底失败 ⇒ 没有拿到译文，可一键重译）。
+    /// 判据是结构化标记 <c>DiffEntry.ProviderBatchFailed</c>，**不解析** ReviewReason 文案。
+    /// </summary>
+    ProviderFailed,
 }
 
 /// <summary>
@@ -79,6 +85,8 @@ public static class ReviewFilter
         "只看 JAPANESE_RESIDUE（日文假名残留）",
         "只看 EMPTY_TRANSLATION（空译文）",
         "只看 CANONICAL_KOREAN_SOURCE_MISSING（缺韩文原文）",
+        // 第9.0C.17轮：筛出"本批翻译失败、可重译"的条目
+        "只看「本批翻译失败」（可重译）",
     };
 
     /// <summary>显示文本 → 筛选类型（无法识别时按"全部"处理）。</summary>
@@ -123,6 +131,8 @@ public static class ReviewFilter
             ReviewFilterKind.JapaneseResidue => HasCode(entry, ValidationIssueCodes.JapaneseResidue),
             ReviewFilterKind.EmptyTranslation => HasCode(entry, ValidationIssueCodes.EmptyTranslation),
             ReviewFilterKind.CanonicalKoreanMissing => HasCode(entry, ValidationIssueCodes.CanonicalKoreanSourceMissing),
+            // 第9.0C.17轮：结构化标记（不解析文案）
+            ReviewFilterKind.ProviderFailed => entry.ProviderBatchFailed,
             _ => true,
         };
     }

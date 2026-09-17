@@ -86,6 +86,9 @@ public sealed partial class MainViewModel
         ArgumentNullException.ThrowIfNull(plan);
         _lastPlan = plan;
 
+        // 第9.0C.17轮：分析 / 载入进度后同步「重译翻译失败的条目」按钮（失败标记只存在于当轮计划的条目上）
+        CanRetranslateFailed = plan.OutputEntries.Any(entry => entry.ProviderBatchFailed);
+
         var summaries = TaskSelection.BuildSummaries(plan);
         _fileSelection.Reconcile(summaries.Select(summary => summary.LogicalFile));
 

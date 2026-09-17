@@ -90,7 +90,12 @@ public sealed class BatchFailureIsolationTests
         Assert.False(client.ThinkingEnabled[1]);           // 降级：关闭思考
         Assert.Equal(2, results.Count);
         Assert.All(results.Values, result => Assert.False(result.NeedsReview));
-        Assert.All(entries, entry => Assert.False(entry.NeedsReview));
+        // 第9.0C.17轮：降级重试成功 ⇒ 不留下失败标记（否则会被误判为"需要重译"）
+        Assert.All(entries, entry =>
+        {
+            Assert.False(entry.NeedsReview);
+            Assert.False(entry.ProviderBatchFailed);
+        });
     }
 
     // ───────── ③ 两次都失败 ⇒ 批级隔离（不抛异常 + 标记待审） ─────────
@@ -110,6 +115,8 @@ public sealed class BatchFailureIsolationTests
         {
             Assert.True(entry.NeedsReview);
             Assert.Contains("本批翻译失败", entry.ReviewReason);
+            // 第9.0C.17轮：结构化标记（GUI 的「重译翻译失败的条目」与筛选项都读它，不解析上面的文案）
+            Assert.True(entry.ProviderBatchFailed);
         });
         Assert.Contains(logs, line => line.Contains("已标记 2 条待人工审核"));
         Assert.Equal(2, client.CallCount);                 // 降级重试也失败，但没有继续抛异常

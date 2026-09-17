@@ -744,10 +744,70 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// 执行汉化翻译。
-    /// 有 API Key 用 DeepSeek，否则用 Mock 模拟（便于验证流程）。
+    /// 执行汉化翻译（正常全量：任务范围 ∩ 文件勾选）。
     /// </summary>
-    public async void RunTranslate()
+    public async void RunTranslate() => await RunTranslateCoreAsync();
+
+    /// <summary>
+    /// 第9.0C.17轮：**重译「本批翻译失败」的条目**。
+    ///
+    /// 背景：批次彻底失败（含关闭思考的降级重试）时，该批条目被标记为待人工审核且没有译文
+    ///（结构化标记 <c>DiffEntry.ProviderBatchFailed</c>）。
+    /// 本方法只针对这些条目重跑**同一条生产链**（重新分析 → 生产计划 → Agent → TM/Cache → Merge → 门禁），
+    /// 不碰其它条目与其它文件；重译成功后标记会随新一轮计划自然消失。
+    /// </summary>
+    public async void RetranslateFailedEntries()
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        if (_lastPlan is null)
+        {
+            StatusText = "请先执行 Diff 分析，再重译失败条目";
+            Log("[调试] 重译失败条目：尚未分析（没有生产计划）");
+            return;
+        }
+
+        var failedKeys = _lastPlan.OutputEntries
+            .Where(entry => entry.ProviderBatchFailed)
+            .Select(entry => entry.Key.ToString())
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (failedKeys.Count == 0)
+        {
+            StatusText = "当前没有「本批翻译失败」的条目";
+            Log("[调试] 重译失败条目：没有 ProviderBatchFailed 标记的条目（无需重译）");
+            return;
+        }
+
+        var confirmed = ConfirmAction?.Invoke(
+            $"将重新翻译 {failedKeys.Count} 条「本批翻译失败」的条目。\n\n"
+            + "只重译这些条目（其它条目与其它文件保持不动），但会真实调用 API 并消耗 Token。\n\n是否继续？") ?? false;
+        if (!confirmed)
+        {
+            StatusText = "已取消重译";
+            Log("[调试] 重译失败条目：用户取消");
+            return;
+        }
+
+        Log($"[调试] 重译失败条目：目标 {failedKeys.Count} 条（只重译这些条目）");
+        _retranslateKeys = failedKeys;
+        try
+        {
+            await RunTranslateCoreAsync();
+        }
+        finally
+        {
+            _retranslateKeys = null;
+        }
+    }
+
+    /// <summary>待重译的 UnitKey 集合（null = 正常全量翻译）。</summary>
+    private HashSet<string>? _retranslateKeys;
+
+    private async Task RunTranslateCoreAsync()
     {
         if (IsBusy)
         {
@@ -880,10 +940,32 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             }
 
             var toTranslate = taskSelection.SelectedEntries.ToList();
-            LogTaskSelection(taskSelection);
+
+            // 第9.0C.17轮：重译模式 ⇒ 只翻译"本批翻译失败"的那些条目。
+            // 这里刻意**忽略文件勾选**（用户已明确要求重译这些失败条目），但输出范围仍限制在受影响文件内。
+            var forcedKeys = _retranslateKeys;
+            if (forcedKeys is not null)
+            {
+                toTranslate = plan.NeedTranslate
+                    .Where(entry => forcedKeys.Contains(entry.Key.ToString()))
+                    .ToList();
+                Log($"[调试] 重译模式：失败条目 {forcedKeys.Count} 条 ⇒ 本轮实际重译 {toTranslate.Count} 条（其余条目与文件不动）");
+            }
+            else
+            {
+                LogTaskSelection(taskSelection);
+            }
+
+            var affectedFiles = toTranslate
+                .Select(entry => entry.Key.RelativeFilePath)
+                .ToHashSet(StringComparer.Ordinal);
 
             // 第8.8轮：直通 / 真正需要 AI 统计（复用既有分类器）
-            ApplyDiffStatistics(toTranslate);
+            // 第9.0C.17轮：重译模式不覆盖全局统计（统计描述的是"本轮全量"语义）
+            if (forcedKeys is null)
+            {
+                ApplyDiffStatistics(toTranslate);
+            }
 
             Log($"[调试] 需要翻译的条目: {toTranslate.Count} / 接线后需译 {plan.NeedTranslate.Count}");
             Log($"[调试] 已选分类: {string.Join(", ", CategoryStats.Where(c => c.IsSelected).Select(c => c.DisplayName))}");
@@ -942,7 +1024,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                 // 4) 合并译文（仅本轮选中的任务范围 / 文件）
                 //    第9.0B-P4轮：条目集合来自生产计划的 output 条目（EN_ONLY → 英文 Key 集；KR 三模式 → 韩文 Key 集）
                 //    第9.0C.3轮：Merge 与 ReleaseGate 的权威 Key 集同样来自任务选择（同一份，未选文件不会进本次 output）
-                var selectedEntries = taskSelection.SelectedOutputEntries.ToList();
+                var selectedEntries = forcedKeys is null
+                    ? taskSelection.SelectedOutputEntries.ToList()
+                    // 第9.0C.17轮：重译模式 ⇒ 只写出"受影响文件"（含文件内其它条目，保证输出完整）
+                    : plan.OutputEntries
+                        .Where(entry => affectedFiles.Contains(entry.Key.RelativeFilePath))
+                        .ToList();
                 var finalTranslations = Coordinator.CollectTranslations(selectedEntries);
 
                 // 填充待审核列表（第9.0C.7轮：改为**本轮翻译的全部条目**，

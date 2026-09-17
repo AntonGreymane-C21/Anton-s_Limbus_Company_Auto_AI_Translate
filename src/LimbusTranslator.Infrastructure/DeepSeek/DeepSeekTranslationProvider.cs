@@ -477,6 +477,9 @@ public sealed class DeepSeekTranslationProvider : ITranslationProvider, IThinkin
         {
             entry.NeedsReview = true;
             entry.ReviewReason = reason;
+            // 第9.0C.17轮：结构化标记 —— GUI 用它启用「重译翻译失败的条目」并筛出这些条目
+            //（业务逻辑一律读这个标记，不解析上面的文案）。
+            entry.ProviderBatchFailed = true;
         }
 
         _log($"[错误] 本批翻译失败，已标记 {batch.Count} 条待人工审核并继续其它批次｜{batchId}｜原因：{reason}");

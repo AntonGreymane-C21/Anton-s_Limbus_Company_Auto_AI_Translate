@@ -112,4 +112,13 @@ public sealed class DiffEntry
 
     /// <summary>自动修正的可读结论（进入 Review 技术详情；null = 未发生）</summary>
     public string? TerminologyRepairNote { get; set; }
+
+    /// <summary>
+    /// 第9.0C.17轮：本条在**最近一次运行**中因"批次彻底失败"（含关闭思考的降级重试）而没有拿到译文。
+    ///
+    /// 这是**结构化标记**（禁止解析 <see cref="ReviewReason"/> 文案）：
+    ///   - GUI 用它启用「重译翻译失败的条目」按钮，并可一键筛出这些条目；
+    ///   - 重译成功后会随新一轮计划一起消失（标记只存在于当轮计划的条目对象上）。
+    /// </summary>
+    public bool ProviderBatchFailed { get; set; }
 }

@@ -288,6 +288,13 @@ public partial class MainWindow : Window
     private void RecoverOutput_Click(object sender, RoutedEventArgs e)
         => _viewModel.RecoverOutputFromCache();
 
+    /// <summary>
+    /// 第9.0C.17轮：只重译「本批翻译失败」的条目（结构化标记 ProviderBatchFailed）；
+    /// 其余条目与文件保持不动，避免整轮重烧 API。
+    /// </summary>
+    private void RetranslateFailedEntries_Click(object sender, RoutedEventArgs e)
+        => _viewModel.RetranslateFailedEntries();
+
     private void SelectAllCategories_Click(object sender, RoutedEventArgs e)
         => _viewModel.SelectAllCategories();
 
