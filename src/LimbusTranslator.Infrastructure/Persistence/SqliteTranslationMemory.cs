@@ -295,6 +295,74 @@ public sealed class SqliteTranslationMemory : ITranslationMemory, IRequestCache,
         }
     }
 
+    /// <summary>
+    /// 批量写入（第9.0C.8轮）：**单事务**提交，用于"从 output 载入进度"这类一次性导入（数万条）。
+    ///
+    /// 语义与 <see cref="Save"/> 完全一致（空源文跳过、SourceHash 含模式盐），
+    /// 只是把 N 次事务合并为 1 次 —— 逐条 <see cref="Save"/> 导入 8 万条会慢到不可接受。
+    /// </summary>
+    /// <returns>实际写入条数（不含被跳过的空源文条目）</returns>
+    public int SaveMany(IEnumerable<(TranslationUnit Unit, TranslationResult Result)> records)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+
+        var pending = records
+            .Where(record => record.Unit is not null && SourceTextGuard.IsReusable(record.Unit.SourceText))
+            .ToList();
+        if (pending.Count == 0)
+        {
+            return 0;
+        }
+
+        var now = DateTime.UtcNow.ToString("o");
+        var written = 0;
+
+        using var conn = OpenConnection();
+        using var tx = conn.BeginTransaction();
+        try
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO translations
+                    (UnitKey, SourceHash, SourceText, Translation,
+                     ContextKey, TranslationSource, NeedsReview, ReviewReason, CreatedAt, UpdatedAt)
+                VALUES
+                    (@key, @hash, @source, @translation,
+                     NULL, @sourceType, @needsReview, @reviewReason, @createdAt, @updatedAt)
+                """;
+
+            var pKey = cmd.Parameters.AddWithValue("@key", string.Empty);
+            var pHash = cmd.Parameters.AddWithValue("@hash", string.Empty);
+            var pSource = cmd.Parameters.AddWithValue("@source", string.Empty);
+            var pTranslation = cmd.Parameters.AddWithValue("@translation", string.Empty);
+            var pSourceType = cmd.Parameters.AddWithValue("@sourceType", 0);
+            var pNeedsReview = cmd.Parameters.AddWithValue("@needsReview", 0);
+            var pReason = cmd.Parameters.AddWithValue("@reviewReason", DBNull.Value);
+            cmd.Parameters.AddWithValue("@createdAt", now);
+            cmd.Parameters.AddWithValue("@updatedAt", now);
+
+            foreach (var (unit, result) in pending)
+            {
+                pKey.Value = unit.Key.ToString();
+                pHash.Value = ComputeSourceHash(unit.SourceText, unit.SourceHashSalt);
+                pSource.Value = unit.SourceText;
+                pTranslation.Value = result.Translation ?? string.Empty;
+                pSourceType.Value = (int)result.Source;
+                pNeedsReview.Value = result.NeedsReview ? 1 : 0;
+                pReason.Value = (object?)result.ReviewReason ?? DBNull.Value;
+                written += cmd.ExecuteNonQuery();
+            }
+
+            tx.Commit();
+            return written;
+        }
+        catch
+        {
+            tx.Rollback();
+            throw;
+        }
+    }
+
     public string? FindRequestCache(string fingerprint)
     {
         using var conn = OpenConnection();

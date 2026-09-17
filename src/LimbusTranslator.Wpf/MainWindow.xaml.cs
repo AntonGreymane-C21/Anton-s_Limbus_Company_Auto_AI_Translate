@@ -136,6 +136,11 @@ public partial class MainWindow : Window
     private void UndoReviewReplace_Click(object sender, RoutedEventArgs e)
         => _viewModel.UndoReviewReplace();
 
+    // ───────── 第9.0C.8轮：从 output 载入进度 ─────────
+
+    private void LoadProgressFromOutput_Click(object sender, RoutedEventArgs e)
+        => _viewModel.LoadProgressFromOutput();
+
     /// <summary>第8.86轮：批量确认当前筛选中无 Error 的条目（弹确认框，不修改译文）。</summary>
     private void BulkConfirmReview_Click(object sender, RoutedEventArgs e)
     {

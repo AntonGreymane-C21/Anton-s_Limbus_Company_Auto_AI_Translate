@@ -123,6 +123,9 @@
                             Margin="0,0,8,0" Click="RunTranslate_Click" ToolTip="翻译已勾选分类，并生成经过校验的 output"/>
                     <Button Content="从缓存恢复 output" Style="{StaticResource TaskButton}" Background="#F2EEFC" Foreground="#6741B4" BorderBrush="#D9CEF6"
                             Margin="0,0,8,0" Click="RecoverOutput_Click" ToolTip="不调用 API；使用当前英文哈希命中的翻译缓存恢复 output"/>
+                    <!-- 第9.0C.8轮：把 data/output 里已写好的译文读回来（载入界面 + 导入 TM），
+                         这样重启程序后也能接着审核 / 重新输出 / 部署，不需要重新翻译 -->
+                    <Button Content="从 output 载入进度" Style="{StaticResource TaskButton}" Background="#EAF6F0" Foreground="#147A62" BorderBrush="#C9E7DA" Margin="0,0,8,0" Click="LoadProgressFromOutput_Click" ToolTip="读取 data/output 的译文：载入到逐条列表（来源=Imported）并写入翻译记忆；不调用 API"/>
                     <Button Content="配置" Style="{StaticResource TaskButton}" Margin="0,0,8,0" Click="OpenSettings_Click" ToolTip="编辑 API、提示词、术语库和角色风格"/>
                     <!-- 第9.0C.1轮：取消当前操作（分析 / 翻译 / 生成 / 部署中可用） -->
                     <Button Content="{Binding CancelButtonText, Mode=OneWay}" Style="{StaticResource TaskButton}"
