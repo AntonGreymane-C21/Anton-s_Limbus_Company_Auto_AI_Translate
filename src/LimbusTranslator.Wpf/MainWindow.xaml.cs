@@ -323,22 +323,72 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var result = await _viewModel.DeployToGameAsync();
-            var isFailure = result.StartsWith("[错误]", StringComparison.Ordinal);
-            var title = isFailure
-                ? (_viewModel.LastDeployOutcomeCritical ? "部署失败（需要人工检查）" : "部署失败")
-                : "部署完成";
-            var message = string.IsNullOrWhiteSpace(_viewModel.LastDeployOutcomeText)
-                ? result
-                : _viewModel.LastDeployOutcomeText + Environment.NewLine + Environment.NewLine + result;
-
-            MessageBox.Show(message, title, MessageBoxButton.OK,
-                isFailure ? MessageBoxImage.Error : MessageBoxImage.Information);
+            ShowDeployResult(await _viewModel.DeployToGameAsync());
         }
         catch (Exception ex)
         {
             _viewModel.FailGui("部署过程中出现未预期的错误，游戏目录可能未完整更新，请查看运行日志。", ex);
         }
+    }
+
+    /// <summary>
+    /// 第9.0C.9轮：部署到**用户选择的汉化文件夹**（例如另一个游戏副本 / 发布用目录）。
+    /// 与「部署到游戏」使用同一套安全流程（清单完整性 / 发布门禁 / 备份 / 原子替换 / 失败回滚）。
+    /// </summary>
+    private async void DeployToFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dialog = new Microsoft.Win32.OpenFolderDialog
+            {
+                Title = "请选择要部署到的汉化文件夹（目标目录）",
+                Multiselect = false,
+            };
+
+            if (Directory.Exists(_viewModel.LastDeployFolderPath))
+            {
+                dialog.InitialDirectory = _viewModel.LastDeployFolderPath;
+            }
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            var targetDir = dialog.FolderName;
+            var confirm = MessageBox.Show(
+                _viewModel.BuildDeployConfirmationText(targetDir, "所选汉化文件夹"),
+                "部署到汉化文件夹确认",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (confirm != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            _viewModel.LastDeployFolderPath = targetDir;
+            ShowDeployResult(await _viewModel.DeployToFolderAsync(targetDir));
+        }
+        catch (Exception ex)
+        {
+            _viewModel.FailGui("部署过程中出现未预期的错误，目标文件夹可能未完整更新，请查看运行日志。", ex);
+        }
+    }
+
+    /// <summary>把部署结果统一展示出来（成功/失败、是否回滚、备份位置）。</summary>
+    private void ShowDeployResult(string result)
+    {
+        var isFailure = result.StartsWith("[错误]", StringComparison.Ordinal);
+        var title = isFailure
+            ? (_viewModel.LastDeployOutcomeCritical ? "部署失败（需要人工检查）" : "部署失败")
+            : "部署完成";
+        var message = string.IsNullOrWhiteSpace(_viewModel.LastDeployOutcomeText)
+            ? result
+            : _viewModel.LastDeployOutcomeText + Environment.NewLine + Environment.NewLine + result;
+
+        MessageBox.Show(message, title, MessageBoxButton.OK,
+            isFailure ? MessageBoxImage.Error : MessageBoxImage.Information);
     }
 
     /// <summary>

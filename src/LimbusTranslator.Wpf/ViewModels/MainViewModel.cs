@@ -1304,24 +1304,52 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             return "[错误] 当前有任务正在运行，请等待完成后再部署。";
         }
 
+        // 自动定位游戏目录获取中文汉化目录（原有行为保持不变）
+        var located = await Task.Run(GameDirectoryLocator.AutoLocate);
+        if (located is null || !Directory.Exists(located.ChineseDir))
+        {
+            Log("[调试] 未找到游戏汉化目录，请先点击「自动定位游戏目录」。");
+            StatusText = "未找到游戏汉化目录";
+            return "[错误] 未找到游戏汉化目录，请先点击「自动定位游戏目录」。";
+        }
+
+        return await DeployToTargetAsync(located.ChineseDir, "游戏汉化目录");
+    }
+
+    /// <summary>
+    /// 部署到**用户指定的汉化文件夹**（第9.0C.9轮）。
+    ///
+    /// 与「部署到游戏」共用**同一套**安全流程：
+    ///   输出清单完整性 → 发布门禁（Blocked 拒绝 / RequiresConfirmation 需勾选确认）→
+    ///   先备份目标文件 → 临时文件 + 原子替换 → 失败逆序回滚。
+    /// 差别只有"目标目录由用户选择"。
+    /// </summary>
+    public Task<string> DeployToFolderAsync(string targetDirectory)
+        => DeployToTargetAsync(targetDirectory, "所选汉化文件夹");
+
+    private async Task<string> DeployToTargetAsync(string targetDir, string targetLabel)
+    {
+        if (IsBusy)
+        {
+            return "[错误] 当前有任务正在运行，请等待完成后再部署。";
+        }
+
         var projectRoot = FindProjectRoot();
         var outputRoot = Path.Combine(projectRoot, "data", "output");
         var backupRoot = Path.Combine(projectRoot, "data", "backup");
         IsBusy = true;
-        StatusText = "部署中...";
+        StatusText = $"部署到{targetLabel}中...";
         BeginGuiDeploy();
-        BeginProgress("部署到游戏", "定位游戏汉化目录");
+        BeginProgress($"部署到{targetLabel}", "检查输出清单与发布门禁");
 
         try
         {
-            // 自动定位游戏目录获取中文汉化目录
-            var located = await Task.Run(GameDirectoryLocator.AutoLocate);
-            if (located is null || !Directory.Exists(located.ChineseDir))
+            if (string.IsNullOrWhiteSpace(targetDir) || !Directory.Exists(targetDir))
             {
-                Log("[调试] 未找到游戏汉化目录，请先点击「自动定位游戏目录」。");
-                StatusText = "未找到游戏汉化目录";
-                FailProgress("未找到游戏汉化目录");
-                return "[错误] 未找到游戏汉化目录，请先点击「自动定位游戏目录」。";
+                Log($"[调试] 目标目录不存在: {targetDir}");
+                StatusText = "目标目录不存在";
+                FailProgress("目标目录不存在");
+                return $"[错误] 目标目录不存在：{targetDir}";
             }
 
             SetProgressStage("备份并部署已核验输出");
@@ -1335,7 +1363,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                 return gateError;
             }
 
-            var result = await Task.Run(() => DeployService.Deploy(outputRoot, located.ChineseDir, backupRoot));
+            var result = await Task.Run(() => DeployService.Deploy(outputRoot, targetDir, backupRoot));
 
                 // 第8.85轮：记录部署结果（状态文案 / 备份目录 / 高危标记）
                 ApplyDeployResult(result);
@@ -1364,7 +1392,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             }
             StatusText = $"已部署 {result.DeployedCount} 个文件";
             CompleteProgress($"已部署 {result.DeployedCount} 个文件");
-            return $"部署成功！{result.DeployedCount} 个文件已写入游戏汉化目录。\n\n原文件已备份到:\n{result.BackupDir}";
+            return $"部署成功！{result.DeployedCount} 个文件已写入{targetLabel}。\n\n原文件已备份到:\n{result.BackupDir}";
         }
         catch (Exception ex)
         {

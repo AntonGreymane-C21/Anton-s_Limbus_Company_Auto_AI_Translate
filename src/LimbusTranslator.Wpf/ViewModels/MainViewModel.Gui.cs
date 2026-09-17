@@ -272,13 +272,25 @@ public sealed partial class MainViewModel
     // ---------------- 部署确认 / 结果 ----------------
 
     /// <summary>生成部署确认对话框正文（目标目录 / 文件数 / 备份 / 回滚）。</summary>
-    public string BuildDeployConfirmationText()
+    public string BuildDeployConfirmationText(string? targetDirectoryOverride = null, string targetLabel = "游戏目录")
     {
-        var target = string.IsNullOrWhiteSpace(GameRootDir)
-            ? "（未定位游戏目录，请先点「自动定位游戏」）"
-            : Path.Combine(GameRootDir, "LimbusCompany_Data", "Lang", "LLC_zh-CN");
-        return DeployPresentation.BuildConfirmationText(target, CountOutputFiles(), RequiresDeployConfirmation, _workflow.GateStatus);
+        var target = targetDirectoryOverride;
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            target = string.IsNullOrWhiteSpace(GameRootDir)
+                ? "（未定位游戏目录，请先点「自动定位游戏」）"
+                : Path.Combine(GameRootDir, "LimbusCompany_Data", "Lang", "LLC_zh-CN");
+        }
+
+        return DeployPresentation.BuildConfirmationText(
+            target, CountOutputFiles(), RequiresDeployConfirmation, _workflow.GateStatus, targetLabel);
     }
+
+    /// <summary>
+    /// 第9.0C.9轮：最近一次选择过的「部署到汉化文件夹」目标目录。
+    /// 仅本次会话内记忆（用于预填文件夹选择框），不写入配置文件。
+    /// </summary>
+    public string LastDeployFolderPath { get; set; } = string.Empty;
 
     private int CountOutputFiles()
     {

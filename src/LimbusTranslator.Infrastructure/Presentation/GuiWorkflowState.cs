@@ -269,15 +269,23 @@ public sealed class GuiWorkflowState
 public static class DeployPresentation
 {
     /// <summary>部署确认对话框正文（必须包含目标目录、文件数、备份与回滚说明）。</summary>
+    /// <param name="targetDirectory">目标目录</param>
+    /// <param name="fileCount">即将复制的文件数</param>
+    /// <param name="requiresConfirmation">门禁是否要求人工确认</param>
+    /// <param name="gateStatus">当前发布门禁状态</param>
+    /// <param name="targetLabel">
+    /// 目标说明（第9.0C.9轮）：默认「游戏目录」；部署到用户自选文件夹时传「所选汉化文件夹」。
+    /// </param>
     public static string BuildConfirmationText(
         string targetDirectory,
         int fileCount,
         bool requiresConfirmation,
-        ReleaseGateStatus? gateStatus)
+        ReleaseGateStatus? gateStatus,
+        string targetLabel = "游戏目录")
     {
         var lines = new List<string>
         {
-            "即将把汉化文件部署到游戏目录：",
+            $"即将把汉化文件部署到{targetLabel}：",
             string.Empty,
             $"目标目录：{targetDirectory}",
             $"即将复制的文件数：{fileCount}",

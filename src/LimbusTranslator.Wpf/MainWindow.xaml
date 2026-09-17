@@ -136,6 +136,8 @@
                     <Button Content="部署到游戏" Style="{StaticResource TaskButton}" Background="#147A62" Foreground="White" BorderBrush="#147A62"
                             IsEnabled="{Binding IsDeployAllowed, Mode=OneWay}"
                             Click="DeployToGame_Click" ToolTip="只部署最近一次输出清单中已核验通过的文件，并自动备份旧文件"/>
+                    <!-- 第9.0C.9轮：部署到自选汉化文件夹（同一套门禁/备份/回滚流程，只是目标目录由你选） -->
+                    <Button Content="部署到汉化文件夹…" Style="{StaticResource TaskButton}" Background="#EAF6F0" Foreground="#147A62" BorderBrush="#C9E7DA" IsEnabled="{Binding IsDeployAllowed, Mode=OneWay}" Click="DeployToFolder_Click" ToolTip="选择一个汉化文件夹作为目标（例如另一个游戏副本或发布用目录）；同样先备份、失败会回滚"/>
                     <TextBlock Margin="18,0,0,0" VerticalAlignment="Center" Style="{StaticResource MutedText}">
                         <Run Text="发布状态 "/>
                         <Run Text="{Binding GateStatusText, Mode=OneWay}" FontWeight="Bold" Foreground="{Binding GateStatusBrush, Mode=OneWay}"/>
