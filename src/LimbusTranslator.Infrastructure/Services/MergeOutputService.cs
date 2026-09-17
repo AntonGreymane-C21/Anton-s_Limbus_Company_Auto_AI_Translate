@@ -102,7 +102,8 @@ public sealed class MergeOutputService
         IReadOnlyDictionary<string, string> translations,
         string outputRoot,
         IEnumerable<string>? expectedKeys = null,
-        SourceLanguage templateLanguage = SourceLanguage.English)
+        SourceLanguage templateLanguage = SourceLanguage.English,
+        Action<int, int>? progress = null)
     {
         var issues = new List<OutputMergeIssue>();
         var translationsByFile = new Dictionary<string, List<OutputTranslation>>(StringComparer.OrdinalIgnoreCase);
@@ -175,9 +176,16 @@ public sealed class MergeOutputService
         var writtenKeys = new List<string>();
         var writtenEntries = 0;
         var verifiedEntries = 0;
+        var processedFiles = 0;
 
         foreach (var relativeFilePath in allRelativePaths)
         {
+            // 第9.0C.21轮（R1）：逐文件进度回调 —— 完整快照要写 2000+ 个文件，
+            // 没有进度时界面会长时间静默（看起来像卡死）。回调放在循环开头，
+            // 因此 continue（跳过/失败）路径也会被计入。
+            processedFiles++;
+            progress?.Invoke(processedFiles, allRelativePaths.Count);
+
             var expected = expectedByFile.TryGetValue(relativeFilePath, out var expectedTargets)
                 ? expectedTargets
                 : new List<OutputTarget>();

@@ -1304,7 +1304,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         IReadOnlyList<DiffEntry> expectedEntries,
         IReadOnlyDictionary<string, string> translations,
         string operationName,
-        ProductionTranslationPlan plan)
+        ProductionTranslationPlan plan,
+        Action<int, int>? progress = null)
     {
         var outputRoot = Path.Combine(FindProjectRoot(), "data", "output");
         var merge = new MergeOutputService();
@@ -1320,7 +1321,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             translations,
             outputRoot,
             expectedKeys,
-            plan.AuthoritativeLanguage);
+            plan.AuthoritativeLanguage,
+            progress);
 
         // 第3轮：先计算发布门禁（补齐未校验的历史继承条目），再写入清单
         // 第9.0B-P4轮：Gate 使用与 Merge 完全相同的权威 Key 集（Missing / Unexpected）

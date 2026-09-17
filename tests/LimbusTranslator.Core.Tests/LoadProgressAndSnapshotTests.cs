@@ -56,7 +56,7 @@ public sealed class LoadProgressAndSnapshotTests
 
         // ① 范围 = 计划里的**全部**输出条目（不是任务选择的范围）
         Assert.Contains("var allEntries = plan.OutputEntries;", source);
-        Assert.Contains("MergeAndRecordOutput(allEntries, translations, \"完整快照\", plan)", source);
+        Assert.Contains("allEntries, translations, \"完整快照\", plan,", source);
 
         // ② 生成后立刻"抓进来"（复用同一条载入路径，且不重复切换 IsBusy）
         Assert.Contains("await LoadProgressFromOutputCoreAsync(manageProgress: false);", source);
@@ -72,6 +72,47 @@ public sealed class LoadProgressAndSnapshotTests
 
         Assert.Contains("private async Task<bool> LoadProgressFromOutputCoreAsync(bool manageProgress)", source);
         Assert.Contains("await LoadProgressFromOutputCoreAsync(manageProgress: true);", source);
+    }
+
+    // ───────── 第9.0C.21轮：R1（快照进度）/ R2（未翻译条目提示）/ R6（冒烟残留清理与部署范围） ─────────
+
+    [Fact]
+    public void R1_完整快照必须报告逐文件进度()
+    {
+        var source = LoadProgressSource();
+        var merge = ReadSource("src", "LimbusTranslator.Infrastructure", "Services", "MergeOutputService.cs");
+
+        Assert.Contains("Action<int, int>? progress = null", merge);
+        Assert.Contains("progress?.Invoke(processedFiles, allRelativePaths.Count);", merge);
+
+        Assert.Contains("progress: (done, total) =>", source);
+        Assert.Contains("完整快照进度: {done}/{total} 个文件", source);
+        Assert.Contains("UpdateProgress(done, total, $\"写出文件 {done}/{total}\")", source);
+        Assert.Contains("SnapshotProgressLogInterval", source);
+    }
+
+    [Fact]
+    public void R2_完整快照必须明确报告无译文条目数()
+    {
+        var source = LoadProgressSource();
+
+        Assert.Contains("issue.Kind == OutputMergeIssueKind.MissingTranslation", source);
+        Assert.Contains("尚无译文", source);
+        Assert.Contains("待人工确认", source);
+    }
+
+    [Fact]
+    public void R6_完整快照必须先清理非权威产物且部署计数按清单()
+    {
+        var source = LoadProgressSource();
+        var gui = ReadSource("src", "LimbusTranslator.Wpf", "ViewModels", "MainViewModel.Gui.cs");
+
+        // 快照写出前清掉 real_api_smoke 之类的非权威产物
+        Assert.Contains("OutputWorkspaceHygiene.Cleanup(", source);
+
+        // 部署确认的"即将复制的文件数"= 清单文件数（回退时才按目录扫描并排除非权威产物）
+        Assert.Contains("OutputManifestService.Load(outputDir)", gui);
+        Assert.Contains("OutputWorkspaceHygiene.IsNonAuthoritative(Path.GetRelativePath(outputDir, path))", gui);
     }
 
     private static string ReadSource(params string[] parts)

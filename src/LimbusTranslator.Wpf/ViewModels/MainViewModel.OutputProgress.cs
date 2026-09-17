@@ -24,6 +24,9 @@ namespace LimbusTranslator.Wpf.ViewModels;
 /// </summary>
 public sealed partial class MainViewModel
 {
+    /// <summary>完整快照写文件时的进度日志间隔（每 N 个文件记一行；避免 2000+ 行刷屏）（第9.0C.21轮）。</summary>
+    private const int SnapshotProgressLogInterval = 200;
+
     private string _outputProgressStatusText = "（尚未载入 output 进度）";
 
     /// <summary>最近一次载入进度的摘要。</summary>
@@ -333,13 +336,44 @@ public sealed partial class MainViewModel
         BeginProgress("生成完整快照", "写出全部权威文件");
         try
         {
+            // 第9.0C.21轮（R6）：先清掉 output 下的**非权威产物**（例如 P6 冒烟写的 real_api_smoke/），
+            // 让目录内容与"清单 = 部署范围"保持一致（清单/部署本来就不含它们）。
+            OutputWorkspaceHygiene.Cleanup(
+                Path.Combine(FindProjectRoot(), "data", "output"), msg => Log(msg));
+
             var translations = Coordinator.CollectTranslations(allEntries);
-            var result = await Task.Run(
-                () => MergeAndRecordOutput(allEntries, translations, "完整快照", plan), token);
+
+            // 第9.0C.21轮（R1）：2000+ 文件的长任务必须有进度（否则界面长时间静默，像卡死）
+            var lastLoggedFile = 0;
+            var result = await Task.Run(() => MergeAndRecordOutput(
+                allEntries, translations, "完整快照", plan,
+                progress: (done, total) =>
+                {
+                    if (done == 1 || done == total || done - lastLoggedFile >= SnapshotProgressLogInterval)
+                    {
+                        lastLoggedFile = done;
+                        Log($"[调试] 完整快照进度: {done}/{total} 个文件");
+                    }
+
+                    UpdateProgress(done, total, $"写出文件 {done}/{total}");
+                }), token);
+
+            // 第9.0C.21轮（R2）：把"没有译文"的条目数明确说出来 ——
+            // 它们按既定 fail-open 策略保留权威源原文写入，门禁会标成"未取得译文（待人工确认）"（非阻断）。
+            var untranslated = result.Issues
+                .Count(issue => issue.Kind == OutputMergeIssueKind.MissingTranslation);
 
             Log($"[调试] 完整快照：写出 {result.WrittenFileCount}/{result.RequestedFileCount} 个文件"
                 + $"（条目 {allEntries.Count} 条；权威语言 {plan.AuthoritativeLanguage}）");
-            StatusText = $"完整快照已生成：{result.WrittenFileCount} 个文件";
+            if (untranslated > 0)
+            {
+                Log($"[调试] 完整快照：其中 {untranslated} 条尚无译文 ⇒ 已保留权威源原文写入，"
+                    + "发布门禁会标记为「未取得译文（待人工确认）」（非阻断；可在审核页按问题类型筛选后处理）");
+            }
+
+            StatusText = untranslated > 0
+                ? $"完整快照已生成：{result.WrittenFileCount} 个文件（其中 {untranslated} 条无译文，需人工确认）"
+                : $"完整快照已生成：{result.WrittenFileCount} 个文件";
             CompleteProgress("完整快照已生成");
 
             // 立刻"抓进来"：复用同一条载入路径（此时 output 已是全量）

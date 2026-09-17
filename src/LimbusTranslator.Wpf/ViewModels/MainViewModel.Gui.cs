@@ -317,9 +317,22 @@ public sealed partial class MainViewModel
         try
         {
             var outputDir = Path.Combine(FindProjectRoot(), "data", "output");
-            return Directory.Exists(outputDir)
-                ? Directory.EnumerateFiles(outputDir, "*.json", SearchOption.AllDirectories).Count()
-                : 0;
+            if (!Directory.Exists(outputDir))
+            {
+                return 0;
+            }
+
+            // 第9.0C.21轮（R6）：部署确认里的"即将复制的文件数"必须等于**清单里的文件数**
+            //（部署本身也只按清单复制）。旧实现递归数 output 下全部 *.json，
+            // 会把非权威产物（如 real_api_smoke/）一并算进去 ⇒ 数字虚高。
+            var manifest = OutputManifestService.Load(outputDir);
+            if (manifest is not null && manifest.Files.Count > 0)
+            {
+                return manifest.Files.Count;
+            }
+
+            return Directory.EnumerateFiles(outputDir, "*.json", SearchOption.AllDirectories)
+                .Count(path => !OutputWorkspaceHygiene.IsNonAuthoritative(Path.GetRelativePath(outputDir, path)));
         }
         catch
         {
