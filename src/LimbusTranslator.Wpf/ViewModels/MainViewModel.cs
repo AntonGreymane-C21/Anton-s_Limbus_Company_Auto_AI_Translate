@@ -1235,6 +1235,10 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
     /// <summary>
     /// 审核完成后重新输出汉化文件（使用审核修改后的译文）。
+    ///
+    /// 第9.0C.24轮：
+    ///   ① 回写改为**后台 + 单事务 + 只回写人工确认过的条目**（旧实现把本轮全部译文逐条回写，UI 卡死）；
+    ///   ② 重新输出的范围由 RecoverOutputFromCacheInternalAsync 统一为"任务选择（分类 ∩ 文件勾选）"。
     /// </summary>
     public async void RegenerateOutput()
     {
@@ -1243,43 +1247,68 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        if (ReviewEntries.Count == 0)
+        if (_reviewAllEntries.Count == 0)
         {
             Log("[调试] 没有待审核条目需要重新输出。");
             return;
         }
 
-        Log($"[调试] 正在根据审核结果重新生成输出文件（{ReviewEntries.Count} 条审核）...");
-        // 第1轮：人工确认后先把译文写回 TranslationMemory（HumanReviewed），再重新输出。
-        // 写回后，下一次运行同 UnitKey + SourceHash 会直接命中，不再调用 Provider。
-        PersistHumanReviewedEntries();
+        Log($"[调试] 正在根据审核结果重新生成输出文件（待审核列表 {_reviewAllEntries.Count} 条）...");
+        await PersistHumanReviewedEntriesAsync();
         await RecoverOutputFromCacheInternalAsync("审核后重新输出");
     }
 
     /// <summary>
-    /// <summary>
-    /// 把待审核列表中人工确认过的译文写回 TranslationMemory。
-    /// 来源 = HumanReviewed，NeedsReview = false；空源文 / 空译文不会被写入。
-    /// 写回成功后，再次运行同 UnitKey + SourceHash 会直接命中，不再调用 Provider。
+    /// 第9.0C.24轮：把**人工确认过的条目**批量写回翻译记忆（后台 + 单事务 + 进度）。
+    ///
+    /// 旧实现的三个问题（真实故障：点击后界面长时间假死）：
+    ///   ① 范围是"本轮全部译文"（可能 10 万条），而不是"人工确认过的条目"；
+    ///   ② 在 UI 线程同步执行；
+    ///   ③ 逐条 SaveHumanReviewed ⇒ 每条一个新连接 + 一个新事务。
+    ///
+    /// 现在：只回写 Provenance == HumanReviewed 的条目
+    ///（每条在「保存当前审核」时已单独写过一次，这里是幂等兜底）；没有可回写条目时立即返回。
     /// </summary>
-    private void PersistHumanReviewedEntries()
+    private async Task PersistHumanReviewedEntriesAsync()
     {
+        var targets = _reviewAllEntries
+            .Where(entry => entry.Provenance == TranslationSource.HumanReviewed
+                            && !string.IsNullOrWhiteSpace(entry.Translation))
+            .ToList();
+
+        if (targets.Count == 0)
+        {
+            Log("[调试] 人工审核回写：没有需要回写的条目（每条保存时已写入 TM）");
+            return;
+        }
+
+        IsBusy = true;
+        StatusText = $"回写人工确认（{targets.Count} 条）...";
+        BeginProgress("回写人工确认", $"写入 {targets.Count} 条");
         try
         {
             var tmDbPath = Path.Combine(FindProjectRoot(), "data", "cache", "translation_memory.db");
-            using var memory = new SqliteTranslationMemory(new TranslationMemoryOptions
+            var saved = await Task.Run(() =>
             {
-                DatabasePath = tmDbPath,
+                SetProgressStage($"单事务写入 {targets.Count} 条");
+                using var memory = new SqliteTranslationMemory(
+                    new TranslationMemoryOptions { DatabasePath = tmDbPath });
+                return HumanReviewService.SaveReviewedEntriesBulk(targets, memory);
             });
 
-            var saved = HumanReviewService.SaveReviewedEntries(_reviewAllEntries.ToList(), memory);
-            Log($"[调试] 人工审核写回 TranslationMemory: {saved}/{ReviewEntries.Count} 条（来源=HumanReviewed，NeedsReview=false）");
-            ReviewCount = ReviewEntries.Count(entry => entry.NeedsReview);
+            Log($"[调试] 人工审核回写：{saved} 条（来源=HumanReviewed，单事务批量写）");
+            ReviewCount = _reviewAllEntries.Count(entry => entry.NeedsReview);
+            CompleteProgress($"已回写 {saved} 条人工确认");
         }
         catch (Exception ex)
         {
-            // 写回失败不应阻断“审核后重新输出”，只记录日志
-            Log($"[调试] 人工审核写回 TranslationMemory 失败: {ex.Message}");
+            // 写回失败不应阻断"审核后重新输出"，只记录日志
+            Log($"[调试] 人工审核回写 TranslationMemory 失败: {ex.Message}");
+            FailProgress("回写人工确认失败");
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 
@@ -1305,23 +1334,40 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         BeginProgress(operationName, "准备读取当前翻译状态");
         try
         {
-            var selectedCategories = CategoryStats
-                .Where(category => category.IsSelected)
-                .Select(category => category.Category)
-                .ToHashSet();
-            if (selectedCategories.Count == 0)
+            // 第9.0C.24轮（范围修复）：恢复/重新输出必须使用**同一份任务选择**（分类勾选 ∩ 文件勾选），
+            // 与「开始汉化」「提取」「部署」完全同源。
+            // 旧实现只看分类勾选 ⇒ 会把**未勾选的文件**也重新写出，并把它们计入输出清单、
+            // 发布门禁与"待审核"统计（真实故障：未勾选文件的条目出现在清单/门禁/待审核里）。
+            var selection = ResolveTaskSelection();
+            if (selection is null)
             {
-                Log("[调试] 没有选中可恢复输出的分类，请先执行 Diff 分析并勾选分类。");
-                StatusText = "没有可恢复输出的分类";
-                CompleteProgress("没有可恢复输出的分类");
+                Log("[调试] 无法确定输出范围：请先执行 Diff 分析。");
+                StatusText = "请先执行 Diff 分析";
+                CompleteProgress("请先执行 Diff 分析");
                 return;
             }
 
+            if (selection.SelectedOutputEntries.Count == 0)
+            {
+                Log("[调试] 当前没有勾选任何需要处理的文件，已取消输出（未勾选文件本轮不动）。");
+                StatusText = "没有勾选任何要处理的文件";
+                CompleteProgress("没有勾选任何要处理的文件");
+                return;
+            }
+
+            // 范围内（任务选择）的逻辑文件集合：Merge / Gate / 人工改写的范围一律以它为准
+            var selectedFiles = selection.SelectedOutputEntries
+                .Select(entry => entry.Key.RelativeFilePath)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            Log($"[调试] {operationName}范围：分类 ∩ 勾选 = {selectedFiles.Count} 个文件 / {selection.SelectedOutputEntries.Count} 条");
+
             // 审核修改优先于缓存，随后才从当前英文源文本哈希中恢复缓存译文。
-            var reviewOverrides = new Dictionary<string, string>();
+            // 第9.0C.24轮：人工改写**只在选中范围内**生效（旧实现跨到了未勾选文件）。
+            var reviewOverrides = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var r in _reviewAllEntries)
             {
-                if (r.Translation is not null)
+                if (r.Translation is not null && selectedFiles.Contains(r.Key.RelativeFilePath))
                 {
                     reviewOverrides[r.Key.ToString()] = r.Translation;
                 }
@@ -1354,7 +1400,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                     _activeGlossarySnapshot);
 
                 var selectedEntries = recoveryPlan.OutputEntries
-                    .Where(entry => selectedCategories.Contains(TextCategoryHelper.FromRelativePath(entry.Key.RelativeFilePath)))
+                    .Where(entry => selectedFiles.Contains(entry.Key.RelativeFilePath))
                     .ToList();
 
                 foreach (var entry in selectedEntries)

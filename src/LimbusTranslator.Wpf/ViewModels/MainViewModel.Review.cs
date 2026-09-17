@@ -300,7 +300,7 @@ public sealed partial class MainViewModel
             return 0;
         }
 
-        var saved = SaveReviewedEntries(candidates);
+        var saved = SaveHumanReviewedBulk(candidates);
         foreach (var entry in candidates)
         {
             RevalidateEntry(entry);
@@ -331,6 +331,33 @@ public sealed partial class MainViewModel
         catch (Exception ex)
         {
             Log($"[调试] 人工审核保存失败: {ex.Message}");
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// 第9.0C.24轮：批量写回 HumanReviewed（**单事务**，不逐条开连接/事务）。
+    ///
+    /// 供「批量确认无 Error 条目」「审核后重新输出」等批量场景使用；
+    /// 单条保存仍走 SaveReviewedEntries（语义完全一致，只是批次不同）。
+    /// </summary>
+    private int SaveHumanReviewedBulk(IReadOnlyList<DiffEntry> entries)
+    {
+        try
+        {
+            using var memory = new LimbusTranslator.Infrastructure.Persistence.SqliteTranslationMemory(
+                new LimbusTranslator.Infrastructure.Persistence.TranslationMemoryOptions
+                {
+                    DatabasePath = TmDatabasePath,
+                },
+                msg => Log(msg));
+            var saved = LimbusTranslator.Infrastructure.Review.HumanReviewService.SaveReviewedEntriesBulk(entries, memory);
+            Log($"[调试] 人工审核批量写回：{saved}/{entries.Count} 条（来源=HumanReviewed，单事务）");
+            return saved;
+        }
+        catch (Exception ex)
+        {
+            Log($"[调试] 人工审核批量写回失败: {ex.Message}");
             return 0;
         }
     }
