@@ -86,9 +86,10 @@ public sealed class GuiWorkflowStatisticsTests
         Assert.Contains("ApplyLoadedProgressStatistics(plan);", source);
         Assert.Contains("_workflow.SetNeedTranslateCount(stillMissing);", source);
 
-        // ③ 摘要里必须说明 output 的覆盖范围（含"文件缺失"）
+        // ③ 摘要里必须说明 output 的覆盖范围（含"文件缺失"）与后续手段（完整快照）
         Assert.Contains("outcome.Loaded.Describe()", source);
-        Assert.Contains("未写出的文件不会被载入", source);
+        Assert.Contains("output 只包含此前**写出过**的文件", source);
+        Assert.Contains("生成完整快照", source);
     }
 
     [Fact]

@@ -3,6 +3,7 @@ using LimbusTranslator.Core.Models;
 using LimbusTranslator.Infrastructure.Persistence;
 using LimbusTranslator.Infrastructure.Presentation;
 using LimbusTranslator.Infrastructure.Services;
+using LimbusTranslator.Infrastructure.Translation;
 
 namespace LimbusTranslator.Wpf.ViewModels;
 
@@ -40,11 +41,21 @@ public sealed partial class MainViewModel
             return;
         }
 
+        await LoadProgressFromOutputCoreAsync(manageProgress: true);
+    }
+
+    /// <summary>
+    /// 第9.0C.20轮：载入进度**主体**（抽出以便「生成完整快照」复用同一条路径）。
+    /// <paramref name="manageProgress"/> = false ⇒ 不切换 IsBusy / 进度条（由调用方负责）。
+    /// </summary>
+    private async Task<bool> LoadProgressFromOutputCoreAsync(bool manageProgress)
+    {
+
         if (_lastPlan is null)
         {
             StatusText = "请先点「分析更新」，再点本按钮（需要生产计划才能把 output 译文对回到条目）";
             Log("[调试] 载入 output 进度：尚未分析（没有生产计划），已取消");
-            return;
+            return false;
         }
 
         var outputRoot = Path.Combine(FindProjectRoot(), "data", "output");
@@ -52,12 +63,15 @@ public sealed partial class MainViewModel
         {
             StatusText = "没有找到 data/output（请先翻译，或点「从缓存恢复 output」）";
             Log($"[调试] 载入 output 进度：目录不存在 {outputRoot}");
-            return;
+            return false;
         }
 
-        IsBusy = true;
-        StatusText = "从 output 载入当前汉化进度中...";
-        BeginProgress("从 output 载入进度", "读取 output 译文");
+        if (manageProgress)
+        {
+            IsBusy = true;
+            StatusText = "从 output 载入当前汉化进度中...";
+            BeginProgress("从 output 载入进度", "读取 output 译文");
+        }
         try
         {
             var plan = _lastPlan;
@@ -76,16 +90,22 @@ public sealed partial class MainViewModel
 
             OutputProgressStatusText =
                 $"已载入 {outcome.Applied.Count} 条（全部进入逐条列表；其中需要 AI 的 {outcome.ForReview.Count} 条）"
-                + $"；{outcome.Loaded.Describe()}；已写入 TM {outcome.TmWritten} 条"
-                + "\n说明：output 只包含此前**写出过**的文件（未写出的文件不会被载入）——上面「命中/文件缺失」即实际覆盖范围。";
+                + $"\n来源：output {outcome.OutputLoadedCount} 条 + 翻译记忆补充 {outcome.TmSupplementedCount} 条；{outcome.Loaded.Describe()}"
+                + $"；本次回写 TM {outcome.TmWritten} 条"
+                + "\n说明：output 只包含此前**写出过**的文件；若仍不全，可点「生成完整快照」把全部权威文件写出后再载入。";
             StatusText = $"已从 output 载入进度：{outcome.Applied.Count} 条（TM {outcome.TmWritten} 条）";
 
             Log($"[调试] 从 output 载入进度：{outcome.Loaded.Describe()}");
-            Log($"[调试] 覆盖条目 {outcome.Applied.Count} 条（来源=Imported，NeedsReview {ReviewCount} 条）；写入 TM {outcome.TmWritten} 条"
+            Log($"[调试] 载入条目 {outcome.Applied.Count} 条（output {outcome.OutputLoadedCount} + TM 补充 {outcome.TmSupplementedCount}；NeedsReview {ReviewCount}）；回写 TM {outcome.TmWritten} 条"
                 + "（注意：更换翻译模式后，因模式盐不同，导入的 TM 不会命中）");
             Log("[调试] 现在可直接逐条查看 / 批量替换 /「审核后重新输出」/「部署到游戏」，无需重新翻译。");
 
-            CompleteProgress("已载入 output 进度");
+            if (manageProgress)
+            {
+                CompleteProgress("已载入 output 进度");
+            }
+
+            return true;
         }
         catch (Exception ex)
         {
@@ -93,17 +113,21 @@ public sealed partial class MainViewModel
             OutputProgressStatusText = $"载入失败：{ex.Message}";
             Log($"[调试] 从 output 载入进度失败: {ex.Message}");
             FailProgress("载入 output 进度失败");
+            return false;
         }
         finally
         {
-            IsBusy = false;
+            if (manageProgress)
+            {
+                IsBusy = false;
+            }
         }
     }
 
     /// <summary>
     /// 载入进度的工作体（**在后台线程执行**：读 900+ 个 output 文件、覆盖条目、重新校验、单事务写 TM）。
     /// </summary>
-    private (OutputProgressLoadResult Loaded, List<DiffEntry> Applied, List<DiffEntry> ForReview, int TmWritten)
+    private (OutputProgressLoadResult Loaded, List<DiffEntry> Applied, List<DiffEntry> ForReview, int TmWritten, int OutputLoadedCount, int TmSupplementedCount)
         LoadProgressCore(ProductionTranslationPlan plan, string outputRoot, string tmDbPath)
     {
         SetProgressStage("读取 output 译文");
@@ -122,6 +146,64 @@ public sealed partial class MainViewModel
             entry.Provenance = TranslationSource.Imported;
             entry.TmMatchType = TranslationMemoryMatchType.None;
             applied.Add(entry);
+        }
+
+        var outputLoadedCount = applied.Count;
+
+        // 第9.0C.20轮（P1）：output 只包含"此前写出过"的文件 ⇒ 其余条目再从 **翻译记忆（TM）** 补一次。
+        // TM 才是本工具真正的累计进度（AI / 人工确认过的全部条目），且按当前模式的盐精确命中；
+        // 命中后**保留 TM 里的原始来源**（AI / HumanReviewed），便于审核页正确显示。
+        SetProgressStage("从翻译记忆补充载入");
+        var tmSupplemented = 0;
+        var tmLoadedKeys = new HashSet<string>(StringComparer.Ordinal);
+        try
+        {
+            var candidates = plan.OutputEntries
+                .Where(entry => string.IsNullOrWhiteSpace(entry.Translation))
+                .Where(entry => !string.IsNullOrWhiteSpace(entry.NewSourceText))
+                .Select(entry => (
+                    Entry: entry,
+                    Hash: SqliteTranslationMemory.ComputeSourceHash(entry.NewSourceText!, entry.SourceHashSalt)))
+                .Where(pair => !string.IsNullOrWhiteSpace(pair.Hash))
+                .ToList();
+
+            if (candidates.Count > 0)
+            {
+                using var memory = new SqliteTranslationMemory(
+                    new TranslationMemoryOptions { DatabasePath = tmDbPath },
+                    msg => Log(msg));
+
+                var wanted = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var pair in candidates)
+                {
+                    wanted[pair.Entry.Key.ToString()] = pair.Hash;
+                }
+
+                var hits = memory.FindExactUnits(wanted);
+                foreach (var pair in candidates)
+                {
+                    var key = pair.Entry.Key.ToString();
+                    if (!hits.TryGetValue(key, out var hit) || string.IsNullOrWhiteSpace(hit.Translation))
+                    {
+                        continue;
+                    }
+
+                    pair.Entry.Translation = hit.Translation;
+                    pair.Entry.Provenance = hit.Source;
+                    pair.Entry.NeedsReview = hit.NeedsReview;
+                    pair.Entry.ReviewReason = hit.ReviewReason;
+                    pair.Entry.TmMatchType = TranslationMemoryMatchType.ExactUnit;
+                    applied.Add(pair.Entry);
+                    tmLoadedKeys.Add(key);
+                    tmSupplemented++;
+                }
+
+                Log($"[调试] 载入进度：TM 补充候选 {candidates.Count} 条 ⇒ 精确命中 {tmSupplemented} 条（按当前模式盐匹配）");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"[调试] 载入进度：从翻译记忆补充失败（output 载入结果仍然有效）：{ex.Message}");
         }
 
         SetProgressStage("重新校验载入的条目");
@@ -150,7 +232,11 @@ public sealed partial class MainViewModel
             using var memory = new SqliteTranslationMemory(
                 new TranslationMemoryOptions { DatabasePath = tmDbPath },
                 msg => Log(msg));
-            tmWritten = memory.SaveMany(applied.Select(entry => (
+            tmWritten = memory.SaveMany(applied
+                // 第9.0C.20轮：从 TM 补充进来的条目**不回写** TM —— 否则会把它们的原始来源
+                //（AI / HumanReviewed）覆盖成 Imported，丢失"已人工确认"的可信标记。
+                .Where(entry => !tmLoadedKeys.Contains(entry.Key.ToString()))
+                .Select(entry => (
                 Unit: TranslationUnitFactory.FromDiffEntry(entry),
                 Result: new TranslationResult
                 {
@@ -175,7 +261,7 @@ public sealed partial class MainViewModel
             .Where(ProductionTranslationPlanBuilder.IsTranslationRequired)
             .ToList();
 
-        return (loaded, applied, forReview, tmWritten);
+        return (loaded, applied, forReview, tmWritten, outputLoadedCount, tmSupplemented);
     }
 
     /// <summary>
@@ -201,4 +287,79 @@ public sealed partial class MainViewModel
         Log($"[调试] 载入后统计刷新：待翻译 {before} → {_workflow.NeedTranslateCount}"
             + $"（当前有译文 {withTranslation} 条）；待审核 {ReviewCount}");
     }
+
+    /// <summary>
+    /// 第9.0C.20轮（P2）：**生成完整快照** —— 把权威结构里的**全部**文件写进 <c>data/output</c>
+    ///（不只本轮勾选范围），随后**立刻按同一份数据载入界面**（"抓进来"）。
+    ///
+    /// 为什么需要：Merge 只写"本轮选中范围"，所以 output 天然只覆盖"曾写出过"的文件，
+    /// 「从 output 载入进度」最多还原这一部分。此按钮用全量范围重新输出一次，
+    /// 之后 output 自己就代表完整进度（含所有继承条目）。
+    ///
+    /// 不调用 API：使用当前计划里已有译文（载入的 / 继承的 / 本轮翻的）；
+    /// 没有译文的条目按既定 fail-open 策略**保留模板原文写入**并由发布门禁标记（非阻断的"待人工确认"）。
+    /// </summary>
+    public async void GenerateFullSnapshot()
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        if (_lastPlan is null)
+        {
+            StatusText = "请先执行 Diff 分析，再生成完整快照";
+            Log("[调试] 完整快照：尚未分析（没有生产计划）");
+            return;
+        }
+
+        var plan = _lastPlan;
+        var allEntries = plan.OutputEntries;
+        var confirmed = ConfirmAction?.Invoke(
+            "将生成【完整快照】：把权威结构里的**全部**文件写入 data/output（本轮勾选范围之外的文件也会写出）。\n\n"
+            + $"· 条目 {allEntries.Count} 条；会覆盖 data/output 里对应文件，并重建输出清单与发布门禁结论\n"
+            + "· 不调用 API（使用当前已载入 / 继承 / 本轮翻译的译文；没有译文的条目保留原文写入并标记待人工确认）\n\n是否继续？") ?? false;
+        if (!confirmed)
+        {
+            StatusText = "已取消生成完整快照";
+            Log("[调试] 完整快照：用户取消");
+            return;
+        }
+
+        var token = BeginCancellableOperation();
+        IsBusy = true;
+        StatusText = "正在生成完整快照...";
+        BeginGuiGenerateOutput();
+        BeginProgress("生成完整快照", "写出全部权威文件");
+        try
+        {
+            var translations = Coordinator.CollectTranslations(allEntries);
+            var result = await Task.Run(
+                () => MergeAndRecordOutput(allEntries, translations, "完整快照", plan), token);
+
+            Log($"[调试] 完整快照：写出 {result.WrittenFileCount}/{result.RequestedFileCount} 个文件"
+                + $"（条目 {allEntries.Count} 条；权威语言 {plan.AuthoritativeLanguage}）");
+            StatusText = $"完整快照已生成：{result.WrittenFileCount} 个文件";
+            CompleteProgress("完整快照已生成");
+
+            // 立刻"抓进来"：复用同一条载入路径（此时 output 已是全量）
+            Log("[调试] 完整快照：开始载入到界面（复用「从 output 载入进度」路径）");
+            await LoadProgressFromOutputCoreAsync(manageProgress: false);
+        }
+        catch (OperationCanceledException)
+        {
+            Log("[调试] 生成完整快照已取消：不生成半成品输出");
+            StatusText = "操作已取消";
+        }
+        catch (Exception ex)
+        {
+            FailGui("生成完整快照失败，data/output 可能未完整写入，请查看运行日志。", ex);
+        }
+        finally
+        {
+            EndCancellableOperation();
+            IsBusy = false;
+        }
+    }
+
 }

@@ -503,6 +503,13 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// 第9.0C.20轮（P2）：生成**完整快照**（全部权威文件写入 data/output）并立刻载入界面。
+    /// 用于「从 output 载入进度」仍然不全时的兜底。
+    /// </summary>
+    private void GenerateFullSnapshot_Click(object sender, RoutedEventArgs e)
+        => _viewModel.GenerateFullSnapshot();
+
     /// <summary>把部署结果统一展示出来（成功/失败、是否回滚、备份位置）。</summary>
     private void ShowDeployResult(string result)
     {

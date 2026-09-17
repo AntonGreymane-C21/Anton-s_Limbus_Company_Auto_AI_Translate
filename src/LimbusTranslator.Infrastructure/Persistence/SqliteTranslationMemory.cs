@@ -155,6 +155,95 @@ public sealed class SqliteTranslationMemory : ITranslationMemory, IRequestCache,
     }
 
     /// <summary>
+    /// 第9.0C.20轮：**批量精确命中**（供「从翻译记忆载入进度」使用）。
+    ///
+    /// 语义与 <see cref="FindExactUnit"/> **完全一致**：
+    ///   - UnitKey 与 SourceHash 必须同时一致；
+    ///   - 源文纯空白不参与命中（<c>TRIM(SourceText) &lt;&gt; ''</c>）；
+    ///   - 同一对 (UnitKey, SourceHash) 有多条时，取 <c>TranslationSource ASC, Id DESC</c> 的第一条（与单条版同序）。
+    ///
+    /// 差别只在实现：按批用 <c>UnitKey IN (…)</c> 一次取回候选行，再在内存里比对哈希
+    ///（表上已有 UnitKey / SourceHash 索引）⇒ 把十几万次单条查询压成几百次批量查询。
+    /// </summary>
+    /// <param name="unitKeyToHash">UnitKey 字符串 → 期望的 SourceHash（调用方按当前模式的盐算好）</param>
+    /// <param name="batchSize">每批 UnitKey 数量（默认 500）</param>
+    /// <returns>命中的 UnitKey → 译文结果（未命中的键不出现；返回键与传入的 UnitKey 字符串一致）</returns>
+    public IReadOnlyDictionary<string, TranslationResult> FindExactUnits(
+        IReadOnlyDictionary<string, string> unitKeyToHash,
+        int batchSize = 500)
+    {
+        var results = new Dictionary<string, TranslationResult>(StringComparer.Ordinal);
+        if (unitKeyToHash is null || unitKeyToHash.Count == 0)
+        {
+            return results;
+        }
+
+        var wanted = unitKeyToHash
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && IsUsableSourceHash(pair.Value))
+            .ToList();
+        if (wanted.Count == 0)
+        {
+            return results;
+        }
+
+        var effectiveBatch = batchSize <= 0 ? 500 : batchSize;
+        using var conn = OpenConnection();
+
+        for (var offset = 0; offset < wanted.Count; offset += effectiveBatch)
+        {
+            var chunk = wanted.Skip(offset).Take(effectiveBatch).ToList();
+            using var cmd = conn.CreateCommand();
+
+            var parameters = new List<string>(chunk.Count);
+            for (var index = 0; index < chunk.Count; index++)
+            {
+                var name = "@k" + index;
+                parameters.Add(name);
+                cmd.Parameters.AddWithValue(name, chunk[index].Key);
+            }
+
+            cmd.CommandText = $"""
+                SELECT UnitKey, SourceHash, Translation, TranslationSource, NeedsReview, ReviewReason
+                FROM translations
+                WHERE UnitKey IN ({string.Join(", ", parameters)})
+                  AND TRIM(SourceText) <> ''
+                ORDER BY TranslationSource ASC, Id DESC
+                """;
+
+            var expected = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var pair in chunk)
+            {
+                expected[pair.Key] = pair.Value;
+            }
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var unitKey = reader.GetString(0);
+                if (results.ContainsKey(unitKey)
+                    || !expected.TryGetValue(unitKey, out var hash)
+                    || !string.Equals(reader.GetString(1), hash, StringComparison.Ordinal))
+                {
+                    // 已有更好的行 / 不是本次要的 UnitKey / 同一 UnitKey 的其它模式与其它源文版本
+                    continue;
+                }
+
+                results[unitKey] = new TranslationResult
+                {
+                    Key = ParseKey(unitKey),
+                    Translation = reader.GetString(2),
+                    Source = (TranslationSource)reader.GetInt32(3),
+                    NeedsReview = reader.GetInt32(4) != 0,
+                    ReviewReason = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    TmMatchType = TranslationMemoryMatchType.ExactUnit,
+                };
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
     /// CrossUnitSource 查询：仅按 SourceHash 查找（UnitKey 可能不同）。
     /// 【禁止】作为最终译文复用；仅供未来 Similar TM / ContextBuilder 参考。
     /// </summary>
