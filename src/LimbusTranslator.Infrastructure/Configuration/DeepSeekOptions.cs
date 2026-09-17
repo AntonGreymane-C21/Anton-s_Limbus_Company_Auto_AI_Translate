@@ -39,7 +39,14 @@ public sealed class DeepSeekOptions
     public double Temperature { get; set; } = 0.3;
 
     /// <summary>最大输出 Token</summary>
-    public int MaxTokens { get; set; } = 4096;
+    /// <summary>
+    /// 单次请求的最大输出 token。
+    ///
+    /// 第9.0C.16轮：默认值 4096 → 8192。
+    /// 原因：真实故障里配置写成 1000000（超出服务端允许范围 [1, 393216]）会被校验拒绝并回落到默认值，
+    /// 而 4096 对"20 条剧情文本 + JSON 包装"偏小、容易被截断成非法 JSON；8192 是更安全的默认。
+    /// </summary>
+    public int MaxTokens { get; set; } = 8192;
 
     /// <summary>请求超时（秒）</summary>
     public int TimeoutSeconds { get; set; } = 120;

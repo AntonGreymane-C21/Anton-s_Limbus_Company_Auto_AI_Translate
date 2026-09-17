@@ -245,7 +245,13 @@ public static class AppSettingsLoader
             // 采样 / 超时 / 并发参数：类型与范围必须合法（非法值会导致请求行为不可预期）
             var configuredOptionals = 0;
             configuredOptionals += ReadNumber(ds, "temperature", 0d, 2d, errors, value => options.Temperature = value);
-            configuredOptionals += ReadNumber(ds, "maxTokens", 1d, 1_000_000d, errors, value => options.MaxTokens = (int)value);
+            // 第9.0C.16轮：maxTokens 上限改为**服务端真实允许范围** [1, 393216]。
+            // 旧上限写成 1,000,000 —— 配置在校验里"合法"，但请求会被 DeepSeek 以
+            // 400 invalid_request_error 拒绝（真实故障：用户填 1000000，AI 找生词全部失败并白重试 5 次）。
+            configuredOptionals += ReadNumber(
+                ds, "maxTokens", 1d, 393_216d, errors,
+                value => options.MaxTokens = (int)value,
+                hint: "建议 8192 ~ 16384；超过服务端上限会导致 API 返回 400");
             configuredOptionals += ReadNumber(ds, "timeoutSeconds", 1d, 3600d, errors, value => options.TimeoutSeconds = (int)value);
             configuredOptionals += ReadNumber(ds, "maxRetry", 0d, 100d, errors, value => options.MaxRetry = (int)value);
             configuredOptionals += ReadNumber(ds, "maxConcurrentRequests", 1d, 1000d, errors, value => options.MaxConcurrentRequests = (int)value);
@@ -442,7 +448,8 @@ public static class AppSettingsLoader
         double min,
         double max,
         List<string> errors,
-        Action<double> assign)
+        Action<double> assign,
+        string? hint = null)
     {
         if (!props.TryGetValue(name, out var element))
         {
@@ -458,7 +465,8 @@ public static class AppSettingsLoader
         var value = element.GetDouble();
         if (double.IsNaN(value) || value < min || value > max)
         {
-            errors.Add($"deepSeek.{name} 超出允许范围（{min} ~ {max}）：{value}");
+            errors.Add($"deepSeek.{name} 超出允许范围（{min} ~ {max}）：{value}"
+                       + (hint is null ? string.Empty : $"；{hint}"));
             return 0;
         }
 

@@ -136,8 +136,21 @@ public sealed class TermExplainer : IDisposable
                 if (!response.IsSuccessStatusCode)
                 {
                     var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                    throw new HttpRequestException(
-                        $"[错误] API 返回 {(int)response.StatusCode}: {Truncate(body, 200)}");
+                    var status = (int)response.StatusCode;
+                    var message = $"[错误] API 返回 {status}: {Truncate(body, 200)}";
+                    if (message.Contains("max_tokens", StringComparison.OrdinalIgnoreCase))
+                    {
+                        message += "（提示：config 的 deepSeek.maxTokens 超出模型允许范围，建议 8192 ~ 16384）";
+                    }
+
+                    // 第9.0C.16轮：4xx（除 408 / 429）是**确定性拒绝**（例如 max_tokens 超范围、鉴权失败、模型名错误），
+                    // 重试只会重复烧钱并拖长时间（真实故障：400 被重试 5 次、退避 2/4/8/16 秒）。
+                    if (status is >= 400 and < 500 && status != 408 && status != 429)
+                    {
+                        throw new InvalidOperationException(message);
+                    }
+
+                    throw new HttpRequestException(message);
                 }
 
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -354,7 +367,21 @@ public sealed class TermExplainer : IDisposable
                 if (!response.IsSuccessStatusCode)
                 {
                     var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                    throw new HttpRequestException($"[错误] API 返回 {(int)response.StatusCode}: {Truncate(body, 200)}");
+                    var status = (int)response.StatusCode;
+                    var message = $"[错误] API 返回 {status}: {Truncate(body, 200)}";
+                    if (message.Contains("max_tokens", StringComparison.OrdinalIgnoreCase))
+                    {
+                        message += "（提示：config 的 deepSeek.maxTokens 超出模型允许范围，建议 8192 ~ 16384）";
+                    }
+
+                    // 第9.0C.16轮：4xx（除 408 / 429）是**确定性拒绝**（max_tokens 超范围 / 鉴权失败 / 模型名错误），
+                    // 重试只会重复烧钱并拖长时间（真实故障：400 被重试 5 次、白等 62 秒）。
+                    if (status is >= 400 and < 500 && status != 408 && status != 429)
+                    {
+                        throw new InvalidOperationException(message);
+                    }
+
+                    throw new HttpRequestException(message);
                 }
 
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);

@@ -171,8 +171,12 @@ public sealed class DeepSeekClient : IDisposable, IDeepSeekBatchClient
                 if ((int)response.StatusCode is >= 400 and < 500 && (int)response.StatusCode != 429)
                 {
                     var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                    // 第9.0C.16轮：把服务端的具体原因翻译成可执行提示（真实故障：max_tokens 超范围）。
+                    var hint = body.Contains("max_tokens", StringComparison.OrdinalIgnoreCase)
+                        ? "（提示：config 的 deepSeek.maxTokens 超出模型允许范围，建议 8192 ~ 16384）"
+                        : string.Empty;
                     throw new InvalidOperationException(
-                        $"[错误] API 请求被拒绝 ({response.StatusCode}): {Truncate(body, 300)}");
+                        $"[错误] API 请求被拒绝 ({response.StatusCode}): {Truncate(body, 300)}{hint}");
                 }
 
                 if (!response.IsSuccessStatusCode)
