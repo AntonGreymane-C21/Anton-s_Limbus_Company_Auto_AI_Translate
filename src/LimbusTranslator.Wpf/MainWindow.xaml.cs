@@ -121,7 +121,17 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"保存审核失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            // 第9.0C.12c轮：把异常类型与首个相关栈帧一起显示，避免只看到 "Object reference not set" 无法定位。
+            var frame = (ex.StackTrace ?? string.Empty)
+                .Split('\n')
+                .Select(line => line.Trim())
+                .FirstOrDefault(line => line.Contains("LimbusTranslator", StringComparison.Ordinal));
+            MessageBox.Show(
+                $"保存审核失败: {ex.GetType().Name}: {ex.Message}"
+                + (frame is null ? string.Empty : $"\n\n位置: {frame}"),
+                "错误",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
         }
     }
 

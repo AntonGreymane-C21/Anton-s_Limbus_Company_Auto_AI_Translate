@@ -251,9 +251,21 @@ public sealed partial class MainViewModel
         }
 
         var saved = SaveReviewedEntries(new[] { SelectedReviewEntry });
-        RevalidateEntry(SelectedReviewEntry);
-        ApplyReviewFilter();
-        RefreshReviewDetailIssues();
+
+        // 第9.0C.12c轮：写 TM（保存）与"刷新界面"必须分开——
+        // 真实反馈：这里曾抛 NullReferenceException，弹窗只写"保存审核失败"，
+        // 让用户以为译文没保存（其实已写入 TM）。刷新失败只记录，不影响保存结果。
+        try
+        {
+            RevalidateEntry(SelectedReviewEntry);
+            ApplyReviewFilter();
+            RefreshReviewDetailIssues();
+        }
+        catch (Exception ex)
+        {
+            Log($"[调试] 保存审核后界面刷新失败（译文已写入 TM，不影响保存结果）: {ex}");
+        }
+
         ReviewSaveStatusText = saved > 0
             ? HardSafetyNote(SelectedReviewEntry)
             : "保存失败（空源文 / 空译文不会写入）";
