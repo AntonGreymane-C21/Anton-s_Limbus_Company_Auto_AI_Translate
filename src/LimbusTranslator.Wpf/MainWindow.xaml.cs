@@ -125,6 +125,17 @@ public partial class MainWindow : Window
         }
     }
 
+    // ───────── 第9.0C.7轮：批量替换 ─────────
+
+    private void PreviewReviewReplace_Click(object sender, RoutedEventArgs e)
+        => _viewModel.PreviewReviewReplace();
+
+    private void ApplyReviewReplace_Click(object sender, RoutedEventArgs e)
+        => _viewModel.ApplyReviewReplace();
+
+    private void UndoReviewReplace_Click(object sender, RoutedEventArgs e)
+        => _viewModel.UndoReviewReplace();
+
     /// <summary>第8.86轮：批量确认当前筛选中无 Error 的条目（弹确认框，不修改译文）。</summary>
     private void BulkConfirmReview_Click(object sender, RoutedEventArgs e)
     {

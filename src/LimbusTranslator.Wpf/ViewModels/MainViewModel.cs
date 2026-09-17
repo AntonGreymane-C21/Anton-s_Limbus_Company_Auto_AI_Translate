@@ -945,9 +945,22 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                 var selectedEntries = taskSelection.SelectedOutputEntries.ToList();
                 var finalTranslations = Coordinator.CollectTranslations(selectedEntries);
 
-                // 填充待审核列表（仅选中分类）
-                var reviewEntries = selectedEntries.Where(e => e.NeedsReview).ToList();
-                ReviewCount = reviewEntries.Count;
+                // 填充待审核列表（第9.0C.7轮：改为**本轮翻译的全部条目**，
+                // 让用户能逐条查看"没问题的译文是否精准"，而不只是有问题的；
+                // ReviewCount 语义不变（仍= NeedsReview 数量，顶部徽章不动）。
+                // 规模保护：上限 5000 条（真实数据：选 1 个文件 = 150 条；不选 = 3881 条），
+                // 超过时只加载前 N 条并明确提示用筛选 / 搜索收敛。
+                const int reviewEntryLimit = 5000;
+                var allTranslated = selectedEntries.ToList();
+                var reviewEntries = allTranslated.Count > reviewEntryLimit
+                    ? allTranslated.Take(reviewEntryLimit).ToList()
+                    : allTranslated;
+                if (reviewEntries.Count < allTranslated.Count)
+                {
+                    Log($"[调试] 待审核列表已截断：本轮译文 {allTranslated.Count} 条，仅加载前 {reviewEntryLimit} 条（请用筛选 / 搜索收敛）");
+                }
+
+                ReviewCount = reviewEntries.Count(e => e.NeedsReview);
                 // 第8.85轮：待审核列表刷新后立即应用筛选（只读投影）
                 ApplyReviewFilter();
                 ReviewEntries.Clear();

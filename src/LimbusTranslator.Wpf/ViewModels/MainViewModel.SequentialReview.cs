@@ -64,7 +64,24 @@ public partial class MainViewModel
     /// <summary>进入逐条审校模式（重置位置并同步详情面板）。</summary>
     public void BeginSequentialReview()
     {
+        // 第9.0C.7轮：列表现在包含**全部本轮译文** ⇒ 在"全部"筛选下默认跳到第一条 NeedsReview，
+        // 保证"审问题"的效率不下降（用户显式筛选时尊重其筛选，从第一条开始）。
         _sequentialIndex = 0;
+        if (LimbusTranslator.Infrastructure.Review.ReviewFilter.Parse(SelectedReviewFilter)
+            == LimbusTranslator.Infrastructure.Review.ReviewFilterKind.All)
+        {
+            var items = SequentialItems;
+            for (var index = 0; index < items.Count; index++)
+            {
+                if (items[index].NeedsReview)
+                {
+                    _sequentialIndex = index;
+                    Log($"[调试] 逐条审校：列表含全部本轮译文 {items.Count} 条，已跳到第一条待审核（第 {index + 1} 条）");
+                    break;
+                }
+            }
+        }
+
         SyncSequentialSelection();
     }
 

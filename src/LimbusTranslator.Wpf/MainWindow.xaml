@@ -446,6 +446,7 @@
                         </Grid.RowDefinitions>
                         <!-- 第8.86轮：筛选 + 结果统计 + 人工审核操作 -->
                         <Border Grid.Row="0" Background="#F3F7FF" BorderBrush="#D6E2FB" BorderThickness="1" CornerRadius="10" Padding="10" Margin="0,0,0,8">
+                            <StackPanel>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="筛选：" VerticalAlignment="Center" Foreground="#4A5568" FontSize="12"/>
                                 <ComboBox Width="230" FontSize="12" ItemsSource="{Binding ReviewFilterOptions}"
@@ -478,6 +479,53 @@
                                 <Button Content="保存" Padding="10,3" Margin="6,0,0,0" Click="SaveReview_Click"/>
                             </StackPanel>
                             </StackPanel>
+
+                            <!-- 第9.0C.7轮：批量替换（把逐条审校时发现的错译一次性改掉；可同时写入术语库） -->
+                            <Expander Header="批量替换（逐条审校时发现的错译 → 一次性修正；可同时写入术语库）" Margin="0,8,0,0" FontSize="12">
+                                <Border Background="#FFF8ED" BorderBrush="#F3E1BE" BorderThickness="1" CornerRadius="8" Padding="10">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                            <TextBlock Text="查找：" VerticalAlignment="Center" Foreground="#4A5568"/>
+                                            <TextBox Width="150" FontSize="12" Margin="4,0,10,0"
+                                                     Text="{Binding ReviewReplaceFind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="当前译文里出现的错误译法，例如 护士长"/>
+                                            <TextBlock Text="替换为：" VerticalAlignment="Center" Foreground="#4A5568"/>
+                                            <TextBox Width="150" FontSize="12" Margin="4,0,14,0"
+                                                     Text="{Binding ReviewReplaceWith, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="正确译法，例如 护父"/>
+                                            <TextBlock Text="范围：" VerticalAlignment="Center" Foreground="#4A5568"/>
+                                            <ComboBox Width="150" FontSize="12" Margin="4,0,10,0"
+                                                      ItemsSource="{Binding ReviewReplaceScopeOptions}"
+                                                      SelectedIndex="{Binding ReviewReplaceScopeIndex, Mode=TwoWay}"/>
+                                            <CheckBox Content="区分大小写" FontSize="12" VerticalAlignment="Center"
+                                                      IsChecked="{Binding ReviewReplaceCaseSensitive, Mode=TwoWay}"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                            <CheckBox Content="同时写入术语库" FontSize="12" VerticalAlignment="Center"
+                                                      IsChecked="{Binding ReviewReplaceWriteGlossary, Mode=TwoWay}"/>
+                                            <TextBlock Text="源文（英文/韩文原词）：" VerticalAlignment="Center" Foreground="#4A5568" Margin="12,0,0,0"/>
+                                            <TextBox Width="160" FontSize="12" Margin="4,0,10,0"
+                                                     Text="{Binding ReviewReplaceGlossarySource, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="术语库的键必须是原词，例如 Nursefather"/>
+                                            <CheckBox Content="锁定（Locked）" FontSize="12" VerticalAlignment="Center"
+                                                      IsChecked="{Binding ReviewReplaceGlossaryLocked, Mode=TwoWay}"/>
+                                            <Button Content="预览命中" Padding="10,3" Margin="14,0,0,0" Click="PreviewReviewReplace_Click"
+                                                    IsEnabled="{Binding CanPreviewReviewReplace}"/>
+                                            <Button Content="执行替换" Padding="10,3" Margin="8,0,0,0" Click="ApplyReviewReplace_Click"
+                                                    IsEnabled="{Binding CanPreviewReviewReplace}"/>
+                                            <Button Content="撤销上次替换" Padding="10,3" Margin="8,0,0,0" Click="UndoReviewReplace_Click"
+                                                    IsEnabled="{Binding CanUndoReviewReplace}"/>
+                                            <TextBlock Text="{Binding ReviewReplaceGlossaryHint}" VerticalAlignment="Center" Margin="12,0,0,0"
+                                                       Foreground="#9A5A0D" FontSize="11"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding ReviewReplacePreviewText}" TextWrapping="Wrap" FontSize="11"
+                                                   Foreground="#31415C" MaxHeight="120"/>
+                                        <TextBlock Text="{Binding ReviewReplaceStatusText}" TextWrapping="Wrap" FontSize="12"
+                                                   FontWeight="SemiBold" Foreground="#147A62" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </Expander>
+                        </StackPanel>
                         </Border>
                         <Border Grid.Row="1" Background="#FFF8ED" BorderBrush="#F3E1BE" BorderThickness="1" CornerRadius="10" Padding="11" Margin="0,0,0,10">
                             <Grid>
