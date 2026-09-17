@@ -102,7 +102,7 @@ public sealed partial class MainViewModel
 
         try
         {
-            using var explainer = new TermExplainer(settings.Options);
+            using var explainer = new TermExplainer(settings.Options, handler: null, log: Log);
             var discovered = await explainer.DiscoverUnknownTermsAsync(
                 texts,
                 (done, _) => UpdateProgress(done, texts.Count, $"已扫描 {done}/{texts.Count} 条文本"),

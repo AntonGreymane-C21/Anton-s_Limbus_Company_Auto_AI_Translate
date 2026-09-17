@@ -19,10 +19,12 @@ public sealed class TermExplainer : IDisposable
 
     private readonly HttpClient _http;
     private readonly DeepSeekOptions _options;
+    private readonly Action<string> _log;
 
-    public TermExplainer(DeepSeekOptions options, HttpMessageHandler? handler = null)
+    public TermExplainer(DeepSeekOptions options, HttpMessageHandler? handler = null, Action<string>? log = null)
     {
         _options = options;
+        _log = log ?? (_ => { });
         _http = handler is null ? new HttpClient() : new HttpClient(handler);
         _http.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds > 0 ? options.TimeoutSeconds : 120);
         _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {options.ApiKey}");
@@ -210,7 +212,9 @@ public sealed class TermExplainer : IDisposable
     }
 
     private static bool IsRetryable(Exception ex)
-        => ex is HttpRequestException or JsonException or TaskCanceledException;
+        => ex is HttpRequestException or JsonException or TaskCanceledException
+           // 第9.0C.11轮：空响应是**确定性失败**，重试只是重复烧钱（真实故障里白重试了 6 次）
+           && ex is not DeepSeekEmptyResponseException;
 
     private static string NormalizeSuggestedTranslation(string value)
     {
@@ -264,8 +268,12 @@ public sealed class TermExplainer : IDisposable
 
         var found = new Dictionary<string, DiscoveredTerm>(StringComparer.OrdinalIgnoreCase);
         var completed = 0;
+        var batchIndex = 0;
         foreach (var chunk in chunks)
         {
+            batchIndex++;
+            // 第9.0C.11轮：每批发送前后都写日志（真实故障里“第一批返回前界面一直 0%”，看起来像卡死）
+            _log($"[调试] AI 找生词：第 {batchIndex}/{chunks.Count} 批发送中（{chunk.Count} 条 / {chunk.Sum(text => text.Length)} 字符）");
             var batch = await DiscoverBatchAsync(chunk, cancellationToken);
             foreach (var term in batch)
             {
@@ -273,6 +281,7 @@ public sealed class TermExplainer : IDisposable
             }
 
             completed += chunk.Count;
+            _log($"[调试] AI 找生词：第 {batchIndex}/{chunks.Count} 批完成（累计 {completed}/{texts.Count} 条文本，已找到 {found.Count} 个词）");
             progress?.Invoke(completed, texts.Count);
         }
 
@@ -331,6 +340,9 @@ public sealed class TermExplainer : IDisposable
             temperature = _options.Temperature,
             max_tokens = _options.MaxTokens,
             response_format = new { type = "json_object" },
+            // 第9.0C.11轮：找生词是“挑词/分类”任务，不需要长推理。
+            // 真实故障：thinking=always_on + high 会把 max_tokens 吃满 ⇒ content 为空 ⇒ 一直失败。
+            thinking = new { type = "disabled" },
         };
 
         var retryDelay = 2;
@@ -350,6 +362,8 @@ public sealed class TermExplainer : IDisposable
             }
             catch (Exception ex) when (attempt < _options.MaxRetry && IsRetryable(ex))
             {
+                // 第9.0C.11轮：重试必须写在日志里（否则用户只看到进度不动，误以为卡死）
+                _log($"[调试] AI 找生词：第 {attempt + 1} 次失败（{ex.GetType().Name}），{retryDelay} 秒后重试；原因：{ex.Message}");
                 await Task.Delay(TimeSpan.FromSeconds(retryDelay), cancellationToken);
                 retryDelay *= 2;
             }
@@ -374,7 +388,7 @@ public sealed class TermExplainer : IDisposable
         var inner = msgContent.GetString() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(inner))
         {
-            throw new JsonException("[错误] 找生词响应为空（可能是思考占满 max_tokens）");
+            throw new DeepSeekEmptyResponseException("[错误] 找生词响应为空（思考可能占满 max_tokens；本请求已关闭思考，仍为空请检查模型/配额）");
         }
 
         using var innerDoc = JsonDocument.Parse(inner);

@@ -139,20 +139,26 @@ public sealed class AiTermDiscoveryTests
 
         public int RequestCount { get; private set; }
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        /// <summary>最后一次请求体（用于断言"找生词必须关闭思考"）。</summary>
+        public string? LastRequestBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             RequestCount++;
+            LastRequestBody = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
 
             var envelope = JsonSerializer.Serialize(new
             {
                 choices = new[] { new { message = new { content = _innerContent } } },
             });
 
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(envelope, Encoding.UTF8, "application/json"),
-            });
+            };
         }
     }
 }
