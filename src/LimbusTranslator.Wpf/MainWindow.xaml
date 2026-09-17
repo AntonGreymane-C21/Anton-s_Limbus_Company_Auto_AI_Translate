@@ -164,6 +164,8 @@
                     </TextBlock>
                     <TextBlock Margin="18,0,0,0" VerticalAlignment="Center" Visibility="{Binding CancellingHintVisibility}"
                                Foreground="#A6425D" FontSize="12" Text="{Binding CancellingHintText, Mode=OneWay}"/>
+                    <!-- 第9.0C.19轮：从 output 载入进度的摘要（此前只写日志，界面上看不到覆盖范围） -->
+                    <TextBlock Margin="18,0,0,0" VerticalAlignment="Center" Foreground="#147A62" FontSize="12" Text="{Binding OutputProgressStatusText, Mode=OneWay}" TextWrapping="Wrap" MaxWidth="880" ToolTip="「命中条目 / 文件缺失 / 字段未解析」即 output 的实际覆盖范围"/>
                 </WrapPanel>
 
             <!-- 第9.0C轮：翻译模式选择 + 首次使用引导（普通用户无需手改配置文件） -->

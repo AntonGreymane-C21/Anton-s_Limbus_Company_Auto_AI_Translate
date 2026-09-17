@@ -222,6 +222,15 @@ public sealed class GuiWorkflowState
     /// <summary>刷新待审核数（例如批量确认后由调用方重新写入）。</summary>
     public void SetNeedReviewCount(int needReviewCount) => NeedReviewCount = Math.Max(0, needReviewCount);
 
+    /// <summary>
+    /// 第9.0C.19轮：刷新待翻译数。
+    ///
+    /// 用于「从 output 载入进度」后把**已载入的条目**从"待翻译"里扣除
+    ///（<see cref="NeedTranslateCount"/> 原本只在"分析完成"时写入一次）。
+    /// 负数收敛为 0；该值同时决定状态栏「待翻译」与「开始汉化」是否可用（<see cref="CanTranslate"/>）。
+    /// </summary>
+    public void SetNeedTranslateCount(int needTranslateCount) => NeedTranslateCount = Math.Max(0, needTranslateCount);
+
     /// <summary>重置为初始状态。</summary>
     public void Reset()
     {

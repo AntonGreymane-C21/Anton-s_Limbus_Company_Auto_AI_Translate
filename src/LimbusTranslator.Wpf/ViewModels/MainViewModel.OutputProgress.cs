@@ -68,11 +68,16 @@ public sealed partial class MainViewModel
             // 修复前这里是"手工往 ReviewEntries 里塞 + ApplyReviewFilter()"：
             // 而分页版 ApplyReviewFilter 以 _reviewAllEntries 为准（本路径从未填充它）
             // ⇒ 过滤器把列表清空、界面显示"全量 0 条"，看起来载入进度后什么都没进来。
-            SetReviewSource(outcome.ForReview);
+            // 第9.0C.19轮（口径统一）：列表来源改为 outcome.Applied（载入到的全部条目），
+            // 与「开始汉化」完成后的 SetReviewSource(selectedEntries) 同口径；
+            // 修复前用 ForReview（只含"需要 AI"的条目）⇒ 载入后列表从 1 万条缩到几百条。
+            SetReviewSource(outcome.Applied);
+            ApplyLoadedProgressStatistics(plan);
 
             OutputProgressStatusText =
-                $"已载入 {outcome.Applied.Count} 条（其中需 AI 的 {outcome.ForReview.Count} 条进入逐条列表）"
-                + $"；output 文件 {outcome.Loaded.FileCount} 个；写入 TM {outcome.TmWritten} 条";
+                $"已载入 {outcome.Applied.Count} 条（全部进入逐条列表；其中需要 AI 的 {outcome.ForReview.Count} 条）"
+                + $"；{outcome.Loaded.Describe()}；已写入 TM {outcome.TmWritten} 条"
+                + "\n说明：output 只包含此前**写出过**的文件（未写出的文件不会被载入）——上面「命中/文件缺失」即实际覆盖范围。";
             StatusText = $"已从 output 载入进度：{outcome.Applied.Count} 条（TM {outcome.TmWritten} 条）";
 
             Log($"[调试] 从 output 载入进度：{outcome.Loaded.Describe()}");
@@ -164,10 +169,36 @@ public sealed partial class MainViewModel
         }
 
         // 逐条列表只放"需要 AI"的条目（继承条目属于既有汉化，不需要逐条看）
+        // 第9.0C.19轮：这里仍然保留 forReview —— 但**只用于摘要计数**；
+        // 逐条列表已改为 applied（与「开始汉化」后的口径一致），避免"载入后只剩几百条"的误判。
         var forReview = applied
             .Where(ProductionTranslationPlanBuilder.IsTranslationRequired)
             .ToList();
 
         return (loaded, applied, forReview, tmWritten);
+    }
+
+    /// <summary>
+    /// 第9.0C.19轮：**载入进度后刷新工作流统计**（状态栏「待翻译」/ 仪表盘 / 审核徽章）。
+    ///
+    /// 为什么需要：<c>NeedTranslateCount</c> 只在"分析完成"时写入一次（<c>CompleteAnalyze</c>），
+    /// 载入进度后不刷新 ⇒ 明明载入了十万条，界面仍显示分析时的旧值，看起来"什么都没载入"。
+    ///
+    /// 口径：把**已有译文**（本次载入的 Imported / 之前的 AI / 人工确认）从"待翻译"里扣除：
+    /// <c>仍待翻译 = plan.NeedTranslate.Where(译文为空)</c>。
+    /// 副作用（合理）：全部载入后「开始汉化」会自动禁用（<c>CanTranslate</c> 依赖该计数）。
+    /// </summary>
+    private void ApplyLoadedProgressStatistics(ProductionTranslationPlan plan)
+    {
+        var before = _workflow.NeedTranslateCount;
+        var stillMissing = plan.NeedTranslate.Count(entry => string.IsNullOrWhiteSpace(entry.Translation));
+        var withTranslation = plan.OutputEntries.Count(entry => !string.IsNullOrWhiteSpace(entry.Translation));
+
+        _workflow.SetNeedTranslateCount(stillMissing);
+        _workflow.SetNeedReviewCount(ReviewCount);
+        NotifyWorkflowBindings();
+
+        Log($"[调试] 载入后统计刷新：待翻译 {before} → {_workflow.NeedTranslateCount}"
+            + $"（当前有译文 {withTranslation} 条）；待审核 {ReviewCount}");
     }
 }
