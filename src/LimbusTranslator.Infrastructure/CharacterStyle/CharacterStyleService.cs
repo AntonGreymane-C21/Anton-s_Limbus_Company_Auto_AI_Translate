@@ -29,7 +29,7 @@ public sealed class CharacterStyleService
         ["Sinclair"] = "内向、胆怯、逐渐成长",
         ["Yi Sang"] = "诗意、抽象、平静",
         ["Outis"] = "军人、严肃、战略思维",
-        ["Merusault"] = "沉默、简短、面无表情",
+        ["Meursault"] = "沉默、简短、面无表情",
     };
 
     public CharacterStyleService(string? configDir = null)
