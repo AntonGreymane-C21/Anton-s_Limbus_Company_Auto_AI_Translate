@@ -272,7 +272,15 @@ public sealed partial class MainViewModel
     // ---------------- 部署确认 / 结果 ----------------
 
     /// <summary>生成部署确认对话框正文（目标目录 / 文件数 / 备份 / 回滚）。</summary>
-    public string BuildDeployConfirmationText(string? targetDirectoryOverride = null, string targetLabel = "游戏目录")
+    /// <param name="targetDirectoryOverride">目标目录（null ⇒ 用自动定位的游戏汉化目录推算）</param>
+    /// <param name="targetLabel">目标标签（游戏目录 / 汉化文件夹）</param>
+    /// <param name="restrictToRelativePaths">
+    /// 第9.0C.13轮：增量部署范围（非 null ⇒ 文案按"只部署这些文件"生成并写明范围）。
+    /// </param>
+    public string BuildDeployConfirmationText(
+        string? targetDirectoryOverride = null,
+        string targetLabel = "游戏目录",
+        IReadOnlyCollection<string>? restrictToRelativePaths = null)
     {
         var target = targetDirectoryOverride;
         if (string.IsNullOrWhiteSpace(target))
@@ -282,8 +290,20 @@ public sealed partial class MainViewModel
                 : Path.Combine(GameRootDir, "LimbusCompany_Data", "Lang", "LLC_zh-CN");
         }
 
-        return DeployPresentation.BuildConfirmationText(
-            target, CountOutputFiles(), RequiresDeployConfirmation, _workflow.GateStatus, targetLabel);
+        var fileCount = restrictToRelativePaths is null
+            ? CountOutputFiles()
+            : restrictToRelativePaths.Count;
+
+        var text = DeployPresentation.BuildConfirmationText(
+            target, fileCount, RequiresDeployConfirmation, _workflow.GateStatus, targetLabel);
+
+        if (restrictToRelativePaths is not null)
+        {
+            text = $"【增量部署】本次**只部署本轮「任务范围」中勾选的文件**（{fileCount} 个），"
+                   + "目标目录里的其他文件不会被触碰。\n\n" + text;
+        }
+
+        return text;
     }
 
     /// <summary>

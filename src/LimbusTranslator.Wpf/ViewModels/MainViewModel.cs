@@ -1304,17 +1304,91 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// 部署到**用户指定的汉化文件夹**（第9.0C.9轮）。
+    /// 第9.0C.13轮：部署到**汉化文件夹**——目标目录自动定位、且**只部署本轮勾选的文件**（增量）。
     ///
-    /// 与「部署到游戏」共用**同一套**安全流程：
-    ///   输出清单完整性 → 发布门禁（Blocked 拒绝 / RequiresConfirmation 需勾选确认）→
-    ///   先备份目标文件 → 临时文件 + 原子替换 → 失败逆序回滚。
-    /// 差别只有"目标目录由用户选择"。
+    /// 语义（用户确认的方案 A）：
+    ///   - 「部署到游戏」= 全量（首次安装 / 修复用），行为保持不变；
+    ///   - 「部署到汉化文件夹」= 自动定位目标 + 只部署「任务范围」里勾选的文件，按原有目录结构写入，
+    ///     目标目录里的其他文件**不被触碰**；
+    ///   - 若本轮没有勾选任何需要 AI 的文件（或尚未分析）⇒ 退回**全量**部署并在日志写明（保持可用）。
+    ///
+    /// 安全流程与「部署到游戏」完全共用：输出清单完整性 → 发布门禁 → 备份 → 原子替换 → 失败回滚。
     /// </summary>
-    public Task<string> DeployToFolderAsync(string targetDirectory)
-        => DeployToTargetAsync(targetDirectory, "所选汉化文件夹");
+    public async Task<string> DeployToFolderAsync(string? targetDirectoryOverride = null)
+    {
+        if (IsBusy)
+        {
+            return "[错误] 当前有任务正在运行，请等待完成后再部署。";
+        }
 
-    private async Task<string> DeployToTargetAsync(string targetDir, string targetLabel)
+        var targetDir = targetDirectoryOverride;
+        if (string.IsNullOrWhiteSpace(targetDir) || !Directory.Exists(targetDir))
+        {
+            targetDir = await Task.Run(() =>
+            {
+                var located = GameDirectoryLocator.AutoLocate();
+                return located?.ChineseDir;
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(targetDir) || !Directory.Exists(targetDir))
+        {
+            Log("[调试] 部署到汉化文件夹：未能自动定位汉化目录，需要用户手动选择目标目录");
+            return "[需要选择目录] 未能自动定位汉化文件夹，请手动选择目标目录。";
+        }
+
+        var files = SelectedDeployFiles();
+        if (files.Count == 0)
+        {
+            Log("[调试] 部署到汉化文件夹：本轮没有勾选需要 AI 的文件（或尚未分析）⇒ 本次按全量部署");
+            return await DeployToTargetAsync(targetDir, "汉化文件夹", restrictToRelativePaths: null);
+        }
+
+        Log($"[调试] 部署到汉化文件夹（增量）：目标={targetDir}，本轮勾选文件 {files.Count} 个");
+        return await DeployToTargetAsync(targetDir, "汉化文件夹", files);
+    }
+
+    /// <summary>
+    /// 自动定位部署目标目录（第9.0C.13轮）：优先用已定位的汉化目录，否则重新自动定位。
+    /// 返回 null 表示定位失败（调用方应让用户手动选择目录）。
+    /// </summary>
+    public async Task<string?> ResolveDeployFolderAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(OldChineseDir) && Directory.Exists(OldChineseDir))
+        {
+            return OldChineseDir;
+        }
+
+        var located = await Task.Run(() =>
+        {
+            var found = GameDirectoryLocator.AutoLocate();
+            return found?.ChineseDir;
+        });
+        return string.IsNullOrWhiteSpace(located) || !Directory.Exists(located) ? null : located;
+    }
+
+    /// <summary>
+    /// 本轮「任务范围」里勾选、且真正需要 AI 的逻辑文件（相对输出根路径，与输出清单同构）。
+    /// 增量部署范围**唯一来源**（与翻译 / 提取 / 输出统计共用同一份任务选择）。
+    /// </summary>
+    public IReadOnlyCollection<string> SelectedDeployFiles()
+    {
+        try
+        {
+            var selection = ResolveTaskSelection();
+            return selection?.SelectedFiles ?? (IReadOnlyCollection<string>)Array.Empty<string>();
+        }
+        catch (Exception ex)
+        {
+            Log($"[调试] 解析本轮勾选文件失败（将按全量部署）：{ex.Message}");
+            return Array.Empty<string>();
+        }
+    }
+
+    private async Task<string> DeployToTargetAsync(
+        string targetDir,
+        string targetLabel,
+        IReadOnlyCollection<string>? restrictToRelativePaths = null)
     {
         if (IsBusy)
         {
@@ -1350,7 +1424,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                 return gateError;
             }
 
-            var result = await Task.Run(() => DeployService.Deploy(outputRoot, targetDir, backupRoot));
+            var result = await Task.Run(() => DeployService.Deploy(outputRoot, targetDir, backupRoot, restrictToRelativePaths: restrictToRelativePaths));
+
+            if (restrictToRelativePaths is not null)
+            {
+                Log($"[调试] 增量部署范围：{restrictToRelativePaths.Count} 个文件（来源=本轮任务范围勾选，"
+                    + "目标目录里的其他文件不会被触碰）");
+            }
 
                 // 第8.85轮：记录部署结果（状态文案 / 备份目录 / 高危标记）
                 ApplyDeployResult(result);
@@ -1379,7 +1459,10 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             }
             StatusText = $"已部署 {result.DeployedCount} 个文件";
             CompleteProgress($"已部署 {result.DeployedCount} 个文件");
-            return $"部署成功！{result.DeployedCount} 个文件已写入{targetLabel}。\n\n原文件已备份到:\n{result.BackupDir}";
+            var scopeNote = restrictToRelativePaths is null
+                ? string.Empty
+                : "\n\n本次为【增量部署】：只写入了本轮勾选的文件，目标目录里的其他文件未被改动。";
+            return $"部署成功！{result.DeployedCount} 个文件已写入{targetLabel}。{scopeNote}\n\n原文件已备份到:\n{result.BackupDir}";
         }
         catch (Exception ex)
         {

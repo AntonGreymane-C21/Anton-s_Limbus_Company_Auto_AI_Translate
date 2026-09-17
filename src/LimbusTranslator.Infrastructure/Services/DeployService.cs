@@ -88,11 +88,19 @@ public static class DeployService
     /// <param name="gameChineseDir">游戏中文目录（目标，如 Lang/LLC_zh-CN）</param>
     /// <param name="backupRoot">备份根目录（如 data/backup）</param>
     /// <param name="fileOperations">文件系统操作（测试缝；null 使用系统实现）</param>
+    /// <param name="restrictToRelativePaths">
+    /// 第9.0C.13轮：**增量部署范围**（相对输出根的路径，例如 <c>StoryData/S949A.json</c>）。
+    ///
+    /// null（默认）= 部署输出清单里的**全部**文件（与历史行为一致，「部署到游戏」走这条）。
+    /// 非 null = 只部署「清单 ∩ 该集合」，且该集合必须是清单的**子集**
+    ///（防止部署未经过本轮核验 / 门禁的文件）。其余安全检查（备份 / 原子替换 / 回滚）完全不变。
+    /// </param>
     public static DeployResult Deploy(
         string outputRoot,
         string gameChineseDir,
         string backupRoot,
-        IDeployFileOperations? fileOperations = null)
+        IDeployFileOperations? fileOperations = null,
+        IReadOnlyCollection<string>? restrictToRelativePaths = null)
     {
         var ops = fileOperations ?? SystemDeployFileOperations.Instance;
 
@@ -140,7 +148,7 @@ public static class DeployService
         }
 
         // Preflight：先构造完整计划，任何一项不通过都不会修改目标文件
-        var plan = BuildPlan(outputRoot, gameChineseDir, backupRoot, manifest, ops);
+        var plan = BuildPlan(outputRoot, gameChineseDir, backupRoot, manifest, ops, restrictToRelativePaths);
 
         // 备份阶段：必须在第一次目标写入之前全部完成
         var backedUpCount = BackupAll(plan, ops);
@@ -157,7 +165,8 @@ public static class DeployService
         string gameChineseDir,
         string backupRoot,
         OutputRunManifest manifest,
-        IDeployFileOperations? fileOperations = null)
+        IDeployFileOperations? fileOperations = null,
+        IReadOnlyCollection<string>? restrictToRelativePaths = null)
     {
         var ops = fileOperations ?? SystemDeployFileOperations.Instance;
 
@@ -166,9 +175,40 @@ public static class DeployService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // 文件数量一致性：清单声明的预期文件数与实际文件列表必须一致
-        if (manifest.RequestedFileCount > 0 && relativePaths.Count != manifest.RequestedFileCount)
+        if (restrictToRelativePaths is not null)
         {
+            // 第9.0C.13轮：增量部署（只部署本轮勾选的文件）。
+            // 范围必须是**本次已核验输出清单的子集**，否则拒绝（避免部署未过门禁/未核验的内容）。
+            var wanted = new HashSet<string>(
+                restrictToRelativePaths.Where(path => !string.IsNullOrWhiteSpace(path)),
+                StringComparer.OrdinalIgnoreCase);
+
+            if (wanted.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "[错误] 本轮选中文件为空，没有可部署的内容（增量部署范围为空）。");
+            }
+
+            var outside = wanted
+                .Where(path => !relativePaths.Contains(path, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+            if (outside.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"[错误] 增量部署范围不在本次输出清单内（{outside.Count} 个，例如 {outside[0]}），"
+                    + "已拒绝部署以保持一致性。请先重新输出。");
+            }
+
+            relativePaths = relativePaths.Where(path => wanted.Contains(path)).ToList();
+            if (relativePaths.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "[错误] 本轮选中文件在输出清单里没有对应文件，没有可部署的内容。");
+            }
+        }
+        else if (manifest.RequestedFileCount > 0 && relativePaths.Count != manifest.RequestedFileCount)
+        {
+            // 全量部署：清单声明的预期文件数与实际文件列表必须一致
             throw new InvalidOperationException(
                 $"[错误] 输出清单文件数与预期不一致（清单 {relativePaths.Count} / 预期 {manifest.RequestedFileCount}），已拒绝部署以保持一致性。");
         }

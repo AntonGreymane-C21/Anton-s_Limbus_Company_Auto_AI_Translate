@@ -382,32 +382,41 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 第9.0C.9轮：部署到**用户选择的汉化文件夹**（例如另一个游戏副本 / 发布用目录）。
-    /// 与「部署到游戏」使用同一套安全流程（清单完整性 / 发布门禁 / 备份 / 原子替换 / 失败回滚）。
+    /// 第9.0C.13轮：部署到**汉化文件夹**——目标目录**自动定位**（与「部署到游戏」同源），
+    /// 且**只部署本轮「任务范围」勾选的文件**（增量，按原有目录结构写入；其他文件不被触碰）。
+    /// 自动定位失败时才让用户手动选择目录。安全流程与「部署到游戏」完全共用。
     /// </summary>
     private async void DeployToFolder_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            var dialog = new Microsoft.Win32.OpenFolderDialog
+            var targetDir = await _viewModel.ResolveDeployFolderAsync();
+            if (string.IsNullOrWhiteSpace(targetDir))
             {
-                Title = "请选择要部署到的汉化文件夹（目标目录）",
-                Multiselect = false,
-            };
+                var dialog = new Microsoft.Win32.OpenFolderDialog
+                {
+                    Title = "未能自动定位汉化文件夹，请手动选择目标目录",
+                    Multiselect = false,
+                };
 
-            if (Directory.Exists(_viewModel.LastDeployFolderPath))
-            {
-                dialog.InitialDirectory = _viewModel.LastDeployFolderPath;
+                if (Directory.Exists(_viewModel.LastDeployFolderPath))
+                {
+                    dialog.InitialDirectory = _viewModel.LastDeployFolderPath;
+                }
+
+                if (dialog.ShowDialog() != true)
+                {
+                    return;
+                }
+
+                targetDir = dialog.FolderName;
             }
 
-            if (dialog.ShowDialog() != true)
-            {
-                return;
-            }
+            var selectedFiles = _viewModel.SelectedDeployFiles();
+            var restrict = selectedFiles.Count > 0 ? selectedFiles : null;
 
-            var targetDir = dialog.FolderName;
             var confirm = MessageBox.Show(
-                _viewModel.BuildDeployConfirmationText(targetDir, "所选汉化文件夹"),
+                _viewModel.BuildDeployConfirmationText(targetDir, "汉化文件夹", restrict),
                 "部署到汉化文件夹确认",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);

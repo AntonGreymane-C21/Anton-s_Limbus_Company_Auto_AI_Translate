@@ -21,20 +21,26 @@ public sealed class DeployFolderEntryTests
     }
 
     [Fact]
-    public void 文件夹部署必须走同一个确认与部署入口()
+    public void 文件夹部署必须自动定位目标_且只部署本轮勾选的文件()
     {
         var codeBehind = ReadSource("src", "LimbusTranslator.Wpf", "MainWindow.xaml.cs");
         var viewModel = ReadSource("src", "LimbusTranslator.Wpf", "ViewModels", "MainViewModel.cs");
 
-        // ① 先选择目录 → 再用同一套确认文案（目标标签为"所选汉化文件夹"）→ 才执行部署
-        Assert.Contains("OpenFolderDialog", codeBehind);
-        Assert.Contains("BuildDeployConfirmationText(targetDir, \"所选汉化文件夹\")", codeBehind);
+        // ① 目标目录**自动定位**（第9.0C.13轮；定位失败才回退到手动选择）
+        Assert.Contains("ResolveDeployFolderAsync()", codeBehind);
+        Assert.Contains("OpenFolderDialog", codeBehind);   // 仅作为自动定位失败时的回退
+
+        // ② 确认文案与部署范围都来自**同一份任务选择**
+        Assert.Contains("SelectedDeployFiles()", codeBehind);
+        Assert.Contains("BuildDeployConfirmationText(targetDir, \"汉化文件夹\", restrict)", codeBehind);
         Assert.Contains("DeployToFolderAsync(targetDir)", codeBehind);
 
-        // ② 两个入口共用同一个部署实现，且 DeployService 的目标目录是真参数
+        // ③ 增量范围最终传给 DeployService（清单子集校验，不是"整目录复制"）
+        Assert.Contains("IReadOnlyCollection<string>? restrictToRelativePaths", viewModel);
+        Assert.Contains("DeployService.Deploy(outputRoot, targetDir, backupRoot", viewModel);
+
+        // ④ 两个入口共用同一个实现：「部署到游戏」仍是全量、目标仍由自动定位得到
         Assert.Contains("DeployToTargetAsync(located.ChineseDir, \"游戏汉化目录\")", viewModel);
-        Assert.Contains("DeployToTargetAsync(targetDirectory, \"所选汉化文件夹\")", viewModel);
-        Assert.Contains("DeployService.Deploy(outputRoot, targetDir, backupRoot)", viewModel);
     }
 
     [Fact]
