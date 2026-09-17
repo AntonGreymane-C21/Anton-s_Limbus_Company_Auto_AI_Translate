@@ -159,6 +159,23 @@ public partial class MainWindow : Window
     private void AbortAllAi_Click(object sender, RoutedEventArgs e)
         => _viewModel.AbortAllAi();
 
+    // ───────── 第9.0C.12轮：待审核分页（每页 5000 条 + 跳页 / 跳文件 / 跳到待审）─────────
+
+    private void ReviewPrevPage_Click(object sender, RoutedEventArgs e)
+        => _viewModel.PreviousReviewPage();
+
+    private void ReviewNextPage_Click(object sender, RoutedEventArgs e)
+        => _viewModel.NextReviewPage();
+
+    private void ReviewJumpPage_Click(object sender, RoutedEventArgs e)
+        => _viewModel.JumpToReviewPage();
+
+    private void ReviewJumpFile_Click(object sender, RoutedEventArgs e)
+        => _viewModel.JumpToReviewFile();
+
+    private void ReviewJumpNeedsReview_Click(object sender, RoutedEventArgs e)
+        => _viewModel.JumpToFirstNeedsReview();
+
     // ───────── 第9.0C.8轮：从 output 载入进度 ─────────
 
     private void LoadProgressFromOutput_Click(object sender, RoutedEventArgs e)

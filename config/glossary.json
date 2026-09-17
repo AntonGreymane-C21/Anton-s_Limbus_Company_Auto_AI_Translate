@@ -1,4 +1,8 @@
 {
+  "Alterationist": {
+    "translation": "改造师",
+    "locked": true
+  },
   "Araya": {
     "translation": "阿赖耶",
     "locked": true
@@ -9,6 +13,10 @@
   },
   "Attack Power Up": {
     "translation": "强壮",
+    "locked": true
+  },
+  "Backstreets": {
+    "translation": "后街",
     "locked": true
   },
   "Bind": {
@@ -31,8 +39,16 @@
     "translation": "打击",
     "locked": true
   },
+  "Boutique du Rouge": {
+    "translation": "红色精品店",
+    "locked": true
+  },
   "Burn": {
     "translation": "烧伤",
+    "locked": true
+  },
+  "Casualwear Hall": {
+    "translation": "休闲装大厅",
     "locked": true
   },
   "Charge": {
@@ -41,6 +57,14 @@
   },
   "Clash": {
     "translation": "拼点",
+    "locked": true
+  },
+  "Customer": {
+    "translation": "顾客",
+    "locked": true
+  },
+  "Customer Service Center": {
+    "translation": "客户服务中心",
     "locked": true
   },
   "Damage Down": {
@@ -75,6 +99,10 @@
     "translation": "堂吉诃德",
     "locked": true
   },
+  "Dubois": {
+    "translation": "杜布瓦",
+    "locked": true
+  },
   "E.G.O": {
     "translation": "E.G.O",
     "locked": true
@@ -95,6 +123,10 @@
     "translation": "收尾人",
     "locked": true
   },
+  "Four-legs": {
+    "translation": "四足者",
+    "locked": true
+  },
   "Fragile": {
     "translation": "易损",
     "locked": true
@@ -109,6 +141,22 @@
   },
   "Gluttony": {
     "translation": "暴食",
+    "locked": true
+  },
+  "Golden Hide": {
+    "translation": "黄金皮",
+    "locked": true
+  },
+  "Golden Resin": {
+    "translation": "金色树脂",
+    "locked": true
+  },
+  "Grand Magasin": {
+    "translation": "大百货",
+    "locked": true
+  },
+  "Grand Magasin Sisyphe": {
+    "translation": "西西弗大百货",
     "locked": true
   },
   "Gregor": {
@@ -131,6 +179,10 @@
     "translation": "赫尔曼",
     "locked": true
   },
+  "Herringbone": {
+    "translation": "人字纹",
+    "locked": true
+  },
   "Index": {
     "translation": "食指",
     "locked": true
@@ -147,8 +199,16 @@
     "translation": "贾环",
     "locked": true
   },
+  "Kaki": {
+    "translation": "卡其",
+    "locked": true
+  },
   "Kromer": {
     "translation": "克罗莫",
+    "locked": true
+  },
+  "Le Noir Footwear Hall": {
+    "translation": "黑色鞋履馆",
     "locked": true
   },
   "Limbus Company": {
@@ -163,8 +223,16 @@
     "translation": "色欲",
     "locked": true
   },
+  "Maison du Noir": {
+    "translation": "黑之屋",
+    "locked": true
+  },
   "Manager": {
     "translation": "管理人",
+    "locked": true
+  },
+  "Mannequin": {
+    "translation": "人偶",
     "locked": true
   },
   "Marked": {
@@ -183,6 +251,18 @@
     "translation": "镜面迷宫",
     "locked": true
   },
+  "N Corp.": {
+    "translation": "N公司",
+    "locked": true
+  },
+  "Noir": {
+    "translation": "黑色",
+    "locked": true
+  },
+  "Noirs": {
+    "translation": "黑派",
+    "locked": true
+  },
   "Nursefather": {
     "translation": "护父",
     "locked": true
@@ -193,6 +273,10 @@
   },
   "Offense Level Up": {
     "translation": "攻击等级提升",
+    "locked": true
+  },
+  "One-leg": {
+    "translation": "一足者",
     "locked": true
   },
   "Ongoing Damage": {
@@ -251,12 +335,24 @@
     "translation": "罗佳",
     "locked": true
   },
+  "Rouges": {
+    "translation": "红派",
+    "locked": true
+  },
   "Rupture": {
     "translation": "破裂",
     "locked": true
   },
   "Ryoshu": {
     "translation": "良秀",
+    "locked": true
+  },
+  "S.O.D.A.": {
+    "translation": "荒谬至极",
+    "locked": true
+  },
+  "S.W.R.Y.": {
+    "translation": "惊悉君至",
     "locked": true
   },
   "SP": {
@@ -275,12 +371,20 @@
     "translation": "辛克莱",
     "locked": true
   },
+  "Singularity": {
+    "translation": "奇点",
+    "locked": true
+  },
   "Sinking": {
     "translation": "沉沦",
     "locked": true
   },
   "Sinner": {
     "translation": "罪人",
+    "locked": true
+  },
+  "Sisyphe Penalty": {
+    "translation": "西西弗刑罚",
     "locked": true
   },
   "Slash": {
@@ -303,6 +407,10 @@
     "translation": "眩晕",
     "locked": true
   },
+  "Stranger": {
+    "translation": "陌生人",
+    "locked": true
+  },
   "Stun": {
     "translation": "晕眩",
     "locked": true
@@ -323,8 +431,24 @@
     "translation": "蜘蛛巢",
     "locked": true
   },
+  "The Shadowed": {
+    "translation": "暗影空间",
+    "locked": true
+  },
   "Tremor": {
     "translation": "震颤",
+    "locked": true
+  },
+  "Two-legs": {
+    "translation": "两足者",
+    "locked": true
+  },
+  "Two-piece": {
+    "translation": "两件套",
+    "locked": true
+  },
+  "Voice": {
+    "translation": "声音",
     "locked": true
   },
   "Walpurgisnacht": {

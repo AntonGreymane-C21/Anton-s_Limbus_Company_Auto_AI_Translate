@@ -950,24 +950,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                 // ReviewCount 语义不变（仍= NeedsReview 数量，顶部徽章不动）。
                 // 规模保护：上限 5000 条（真实数据：选 1 个文件 = 150 条；不选 = 3881 条），
                 // 超过时只加载前 N 条并明确提示用筛选 / 搜索收敛。
-                const int reviewEntryLimit = 5000;
-                var allTranslated = selectedEntries.ToList();
-                var reviewEntries = allTranslated.Count > reviewEntryLimit
-                    ? allTranslated.Take(reviewEntryLimit).ToList()
-                    : allTranslated;
-                if (reviewEntries.Count < allTranslated.Count)
-                {
-                    Log($"[调试] 待审核列表已截断：本轮译文 {allTranslated.Count} 条，仅加载前 {reviewEntryLimit} 条（请用筛选 / 搜索收敛）");
-                }
-
-                ReviewCount = reviewEntries.Count(e => e.NeedsReview);
-                // 第8.85轮：待审核列表刷新后立即应用筛选（只读投影）
-                ApplyReviewFilter();
-                ReviewEntries.Clear();
-                foreach (var r in reviewEntries)
-                {
-                    ReviewEntries.Add(r);
-                }
+                // 第9.0C.12轮：待审核列表改为「完整集合 + 分页（每页 5000 条）」。
+                // 旧做法 Take(5000) 会让排在第 5000 条之后的**整文件**在待审核页看不见
+                //（真实反馈：StoryData/S1000B.json 等十来個文件在待审核页完全没有）。
+                SetReviewSource(selectedEntries);
+                Log($"[调试] 待审核列表：本轮译文 {selectedEntries.Count} 条（分页浏览，每页 {ReviewPageSize} 条）");
 
                 // 更新条目表格的译文（仅选中分类）
                 foreach (var e in selectedEntries)
@@ -1069,7 +1056,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                 DatabasePath = tmDbPath,
             });
 
-            var saved = HumanReviewService.SaveReviewedEntries(ReviewEntries.ToList(), memory);
+            var saved = HumanReviewService.SaveReviewedEntries(_reviewAllEntries.ToList(), memory);
             Log($"[调试] 人工审核写回 TranslationMemory: {saved}/{ReviewEntries.Count} 条（来源=HumanReviewed，NeedsReview=false）");
             ReviewCount = ReviewEntries.Count(entry => entry.NeedsReview);
         }
@@ -1116,7 +1103,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
             // 审核修改优先于缓存，随后才从当前英文源文本哈希中恢复缓存译文。
             var reviewOverrides = new Dictionary<string, string>();
-            foreach (var r in ReviewEntries)
+            foreach (var r in _reviewAllEntries)
             {
                 if (r.Translation is not null)
                 {

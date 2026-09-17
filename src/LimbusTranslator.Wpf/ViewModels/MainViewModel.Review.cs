@@ -59,12 +59,12 @@ public sealed partial class MainViewModel
                               && ReviewFilter.Matches(entry, kind)
                               && MatchesSearch(entry, _reviewSearchText);
 
-        var visible = ReviewEntries
+        var visible = _reviewAllEntries   // 第9.0C.12轮：筛选作用在完整集合上
             .Where(entry => ReviewFilter.Matches(entry, kind) && MatchesSearch(entry, _reviewSearchText))
             .ToList();
         var (error, warning) = ReviewFilter.CountSeverities(visible);
         ReviewFilterSummaryText =
-            $"当前筛选结果：{visible.Count} / 总待审核 {ReviewEntries.Count}；Error {error} / Warning {warning}"
+            $"当前筛选结果：{visible.Count} / 全量 {_reviewAllEntries.Count}（待审 {_reviewAllEntries.Count(e => e.NeedsReview)}）；Error {error} / Warning {warning}"
             + (string.IsNullOrWhiteSpace(_reviewSearchText) ? string.Empty : $"；搜索「{_reviewSearchText}」")
             + $"；{_workflow.ReviewProgressText}";
         OnPropertyChanged(nameof(ReviewFilterSummaryText));
@@ -73,6 +73,10 @@ public sealed partial class MainViewModel
         {
             SelectedReviewEntry = visible.FirstOrDefault();
         }
+
+        // 第9.0C.12轮：把筛选结果交给分页器，并把当前页填进 ReviewEntries（每页 5000 条，可翻页/跳页/跳文件）
+        SetFilteredReviewEntries(visible);
+        RefreshReviewPage();
     }
 
     /// <summary>

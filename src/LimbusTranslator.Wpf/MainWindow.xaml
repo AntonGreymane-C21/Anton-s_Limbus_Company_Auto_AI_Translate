@@ -468,6 +468,15 @@
                                 <Button Content="保存当前审核" Padding="10,3" Margin="14,0,0,0" Click="SaveReview_Click"                                        ToolTip="写回 HumanReviewed（NeedsReview=false），并重新运行 Validator 校验"/>
                                 <Button Content="确认当前筛选中无 Error 条目" Padding="10,3" Margin="8,0,0,0" Click="BulkConfirmReview_Click"
                                         ToolTip="只把无 Error 的条目标记为人工审核通过；不会修改任何译文"/>
+                                <!-- 第9.0C.12轮：分页（每页 5000 条）+ 跳页 + 跳文件 + 跳到待审（放在筛选旁边） -->
+                                <TextBlock Text="{Binding ReviewPagerText}" VerticalAlignment="Center" Margin="14,0,0,0" Foreground="#2D3748" FontSize="12"/>
+                                <Button Content="◀ 上一页" Padding="8,2" Margin="10,0,0,0" Click="ReviewPrevPage_Click" IsEnabled="{Binding CanGoPreviousReviewPage}"/>
+                                <Button Content="下一页 ▶" Padding="8,2" Margin="6,0,0,0" Click="ReviewNextPage_Click" IsEnabled="{Binding CanGoNextReviewPage}"/>
+                                <TextBox Width="54" Margin="10,0,0,0" FontSize="12" Text="{Binding ReviewJumpPageText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="跳到第 N 页"/>
+                                <Button Content="跳页" Padding="8,2" Margin="4,0,0,0" Click="ReviewJumpPage_Click"/>
+                                <TextBox Width="90" Margin="10,0,0,0" FontSize="12" Text="{Binding ReviewJumpFileText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="跳到包含该文件名的页（例如 S1000B）"/>
+                                <Button Content="跳文件" Padding="8,2" Margin="4,0,0,0" Click="ReviewJumpFile_Click"/>
+                                <Button Content="跳到待审" Padding="8,2" Margin="10,0,0,0" Click="ReviewJumpNeedsReview_Click" ToolTip="跳到第一个需要人工审核的条目所在页"/>
                                 <TextBlock Text="{Binding ReviewSaveStatusText}" VerticalAlignment="Center" Margin="12,0,0,0"
                                            Foreground="#9A5A0D" FontSize="12"/>
                             <!-- 第8.88轮：逐条审校工作台导航栏（与筛选同一行容器内） -->
