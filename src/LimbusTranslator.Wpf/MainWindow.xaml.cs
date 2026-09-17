@@ -136,6 +136,29 @@ public partial class MainWindow : Window
     private void UndoReviewReplace_Click(object sender, RoutedEventArgs e)
         => _viewModel.UndoReviewReplace();
 
+    // ───────── 第9.0C.10轮：AI 找生词 + 中止所有 AI 对话 ─────────
+
+    /// <summary>AI 找生词：先确认（会消耗 Token），再调用。</summary>
+    private void AiScanTerms_Click(object sender, RoutedEventArgs e)
+    {
+        var confirm = MessageBox.Show(
+            _viewModel.BuildAiTermDiscoveryConfirmationText(),
+            "AI 找生词确认",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirm != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        _viewModel.DiscoverUnknownTermsAi();
+    }
+
+    /// <summary>独立按钮：立刻中止当前所有 AI 活动（翻译 / 找生词 / 生成解释 / 分析）。</summary>
+    private void AbortAllAi_Click(object sender, RoutedEventArgs e)
+        => _viewModel.AbortAllAi();
+
     // ───────── 第9.0C.8轮：从 output 载入进度 ─────────
 
     private void LoadProgressFromOutput_Click(object sender, RoutedEventArgs e)

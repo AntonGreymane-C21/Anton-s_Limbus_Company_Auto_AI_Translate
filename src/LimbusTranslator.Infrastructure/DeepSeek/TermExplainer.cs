@@ -20,13 +20,11 @@ public sealed class TermExplainer : IDisposable
     private readonly HttpClient _http;
     private readonly DeepSeekOptions _options;
 
-    public TermExplainer(DeepSeekOptions options)
+    public TermExplainer(DeepSeekOptions options, HttpMessageHandler? handler = null)
     {
         _options = options;
-        _http = new HttpClient
-        {
-            Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds > 0 ? options.TimeoutSeconds : 120),
-        };
+        _http = handler is null ? new HttpClient() : new HttpClient(handler);
+        _http.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds > 0 ? options.TimeoutSeconds : 120);
         _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {options.ApiKey}");
     }
 
@@ -38,6 +36,27 @@ public sealed class TermExplainer : IDisposable
         "2. meaning：这个词在这个游戏中的含义（简明，一两句话）；\n" +
         "3. origin：这个词是否有出处/由来（如圣经、神话、歌剧、文学作品、历史典故等），没有则写\"无特别由来\"。\n" +
         "输出必须是合法的 json 对象，固定为 {\"terms\":[{\"original\":\"...\",\"suggested_translation\":\"...\",\"meaning\":\"...\",\"origin\":\"...\"}]}，不得输出额外内容。";
+
+    /// <summary>术语解释系统提示词，供诊断与单元测试验证 JSON 输出约束</summary>
+    /// <summary>
+    /// 「找出你不认识/不确定的词」系统提示词（第9.0C.10轮）。
+    ///
+    /// 与本地扫描的差别：本地是“大写即候选 + 停用词名单”（名单外的常用词会漏进来），
+    /// 这里由模型自己判断“哪些词需要人工确认译法”，并显式禁止把普通常用词列进来。
+    /// </summary>
+    private const string DiscoverPrompt =
+        "你是《Limbus Company / 边狱巴士》的世界设定专家，同时精通中英韩日四种语言。"
+        + "用户会给你一批游戏内文本（英文/韩文/日文）。请只挑出你不认识或不确定其准确译法的词或短语，例如："
+        + "游戏自造词、角色名、组织名、地名、技能/状态名、专有术语、文化典故、音译名。"
+        + "不要列出普通常用词、寒暄用语、语法词（例如 alright / thanks / maybe / please / suddenly / everyone 这类）。"
+        + "对每个词给出：original（原文，必须与文本中出现的写法一致）、"
+        + "suggested_translation（最贴切的中文译名，只给一个，禁止用斜杠/顿号/括号列备选）、"
+        + "reason（为什么不确定：如自造词/多义/需要社区通译，一两句话）。"
+        + "输出必须是合法 json 对象，固定为 {\"terms\":[{\"original\":\"...\",\"suggested_translation\":\"...\",\"reason\":\"...\"}]}；"
+        + "没有可选词时返回 {\"terms\":[]}；不得输出额外内容。";
+
+    /// <summary>「找生词」提示词（诊断 / 单元测试用）。</summary>
+    public static string DiscoverSystemPrompt => DiscoverPrompt;
 
     /// <summary>术语解释系统提示词，供诊断与单元测试验证 JSON 输出约束</summary>
     public static string ExplainSystemPrompt => ExplainPrompt;
@@ -221,6 +240,167 @@ public sealed class TermExplainer : IDisposable
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "...";
 
+    /// <summary>
+    /// 让 AI 自己找出“不认识 / 不确定”的词（第9.0C.10轮）。
+    ///
+    /// 行为：把文本按字符预算切块，逐块请求模型，合并去重；
+    /// 取消（OperationCanceledException）原样向外传播 —— 由界面决定如何提示。
+    /// </summary>
+    public async Task<IReadOnlyList<DiscoveredTerm>> DiscoverUnknownTermsAsync(
+        IReadOnlyList<string> texts,
+        Action<int, int>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.ApiKey))
+        {
+            throw new InvalidOperationException("[错误] 未配置 DeepSeek API Key，请在 config/appsettings.json 中填写。");
+        }
+
+        var chunks = ChunkTexts(texts, MaxCharsPerDiscoveryRequest);
+        if (chunks.Count == 0)
+        {
+            return Array.Empty<DiscoveredTerm>();
+        }
+
+        var found = new Dictionary<string, DiscoveredTerm>(StringComparer.OrdinalIgnoreCase);
+        var completed = 0;
+        foreach (var chunk in chunks)
+        {
+            var batch = await DiscoverBatchAsync(chunk, cancellationToken);
+            foreach (var term in batch)
+            {
+                found.TryAdd(term.Original, term);
+            }
+
+            completed += chunk.Count;
+            progress?.Invoke(completed, texts.Count);
+        }
+
+        return found.Values.ToList();
+    }
+
+    /// <summary>把文本按字符预算切成若干请求批次（单条超长文本独占一批）。</summary>
+    public static List<List<string>> ChunkTexts(IReadOnlyList<string> texts, int maxCharsPerRequest)
+    {
+        var chunks = new List<List<string>>();
+        var current = new List<string>();
+        var currentChars = 0;
+
+        foreach (var text in texts)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                continue;
+            }
+
+            if (current.Count > 0 && currentChars + text.Length > maxCharsPerRequest)
+            {
+                chunks.Add(current);
+                current = new List<string>();
+                currentChars = 0;
+            }
+
+            current.Add(text);
+            currentChars += text.Length;
+        }
+
+        if (current.Count > 0)
+        {
+            chunks.Add(current);
+        }
+
+        return chunks;
+    }
+
+    /// <summary>单次“找生词”请求的文本字符上限（第9.0C.10轮）。</summary>
+    public const int MaxCharsPerDiscoveryRequest = 8000;
+
+    private async Task<IReadOnlyList<DiscoveredTerm>> DiscoverBatchAsync(
+        IReadOnlyList<string> texts,
+        CancellationToken cancellationToken)
+    {
+        var payload = new { texts };
+        var requestBody = new
+        {
+            model = _options.Model,
+            messages = new object[]
+            {
+                new { role = "system", content = DiscoverPrompt },
+                new { role = "user", content = JsonSerializer.Serialize(payload) },
+            },
+            temperature = _options.Temperature,
+            max_tokens = _options.MaxTokens,
+            response_format = new { type = "json_object" },
+        };
+
+        var retryDelay = 2;
+        for (var attempt = 0; attempt <= _options.MaxRetry; attempt++)
+        {
+            try
+            {
+                using var response = await _http.PostAsJsonAsync(_options.ApiUrl, requestBody, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                    throw new HttpRequestException($"[错误] API 返回 {(int)response.StatusCode}: {Truncate(body, 200)}");
+                }
+
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                return ParseDiscoverResponse(content);
+            }
+            catch (Exception ex) when (attempt < _options.MaxRetry && IsRetryable(ex))
+            {
+                await Task.Delay(TimeSpan.FromSeconds(retryDelay), cancellationToken);
+                retryDelay *= 2;
+            }
+        }
+
+        throw new InvalidOperationException("[错误] 重试次数已用尽，找生词失败。");
+    }
+
+    private static IReadOnlyList<DiscoveredTerm> ParseDiscoverResponse(string content)
+    {
+        using var doc = JsonDocument.Parse(content);
+        var root = doc.RootElement;
+
+        if (!root.TryGetProperty("choices", out var choices)
+            || choices.GetArrayLength() == 0
+            || !choices[0].TryGetProperty("message", out var message)
+            || !message.TryGetProperty("content", out var msgContent))
+        {
+            throw new JsonException("[错误] 找生词响应缺少 message.content");
+        }
+
+        var inner = msgContent.GetString() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(inner))
+        {
+            throw new JsonException("[错误] 找生词响应为空（可能是思考占满 max_tokens）");
+        }
+
+        using var innerDoc = JsonDocument.Parse(inner);
+        if (!innerDoc.RootElement.TryGetProperty("terms", out var termItems)
+            || termItems.ValueKind != JsonValueKind.Array)
+        {
+            throw new JsonException("[错误] 找生词响应缺少 terms 数组");
+        }
+
+        var results = new List<DiscoveredTerm>();
+        foreach (var item in termItems.EnumerateArray())
+        {
+            var original = item.TryGetProperty("original", out var o) ? o.GetString() ?? string.Empty : string.Empty;
+            if (string.IsNullOrWhiteSpace(original))
+            {
+                continue;
+            }
+
+            var suggested = item.TryGetProperty("suggested_translation", out var s) ? s.GetString() ?? string.Empty : string.Empty;
+            var reason = item.TryGetProperty("reason", out var r) ? r.GetString() ?? string.Empty : string.Empty;
+            results.Add(new DiscoveredTerm(original.Trim(), NormalizeSuggestedTranslation(suggested), reason));
+        }
+
+        return results;
+    }
+
     public void Dispose() => _http.Dispose();
 }
 
@@ -247,3 +427,6 @@ public sealed class TermExplanation
             ? Meaning
             : $"{Meaning}\n【由来】{Origin}";
 }
+
+/// <summary>AI 找出的“不认识 / 不确定”的词（第9.0C.10轮）。</summary>
+public sealed record DiscoveredTerm(string Original, string SuggestedTranslation, string Reason);

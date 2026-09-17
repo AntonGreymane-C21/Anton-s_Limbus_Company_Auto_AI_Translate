@@ -395,7 +395,10 @@
                                                Style="{StaticResource MutedText}" Margin="0,3,0,0"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Button Content="扫描术语" Style="{StaticResource TaskButton}" Background="#2E6BDE" Foreground="White" BorderBrush="#2E6BDE" Margin="0,0,7,0" Click="ScanTerms_Click"/>
+                                    <Button Content="本地快速扫描术语" Style="{StaticResource TaskButton}" Background="#2E6BDE" Foreground="White" BorderBrush="#2E6BDE" Margin="0,0,7,0" Click="ScanTerms_Click"/>
+                                    <!-- 第9.0C.10轮：AI 找生词（真实调用 DeepSeek）与独立的中止按钮 -->
+                                    <Button Content="AI 找生词（调 API）" Style="{StaticResource TaskButton}" Background="#147A62" Foreground="White" BorderBrush="#147A62" Margin="0,0,7,0" Click="AiScanTerms_Click" ToolTip="把选中文件的文本交给 DeepSeek，由 AI 挑出它不认识/不确定的词（含建议译名）；会消耗 Token"/>
+                                    <Button Content="中止所有 AI 对话" Style="{StaticResource TaskButton}" Background="#FDF2F4" Foreground="#A6425D" BorderBrush="#F0D3DA" Margin="0,0,7,0" Click="AbortAllAi_Click" IsEnabled="{Binding IsBusy, Mode=OneWay}" ToolTip="立刻中止所有正在进行的 AI 对话（翻译 / 找生词 / 生成解释 / 分析），不会再发送新的请求"/>
                                     <Button Content="生成解释" Style="{StaticResource TaskButton}" Background="#6741B4" Foreground="White" BorderBrush="#6741B4" Margin="0,0,7,0" Click="ExplainTerms_Click" ToolTip="DeepSeek 的单一推荐译名会自动填入待写入译名列"/>
                                     <Button Content="写入术语库" Style="{StaticResource TaskButton}" Background="#147A62" Foreground="White" BorderBrush="#147A62" Click="WriteTerms_Click"/>
                                 </StackPanel>
