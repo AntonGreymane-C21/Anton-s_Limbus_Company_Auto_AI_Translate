@@ -64,14 +64,11 @@ public sealed partial class MainViewModel
             var tmDbPath = TmDatabasePath;
             var outcome = await Task.Run(() => LoadProgressCore(plan, outputRoot, tmDbPath));
 
-            ReviewEntries.Clear();
-            foreach (var entry in outcome.ForReview)
-            {
-                ReviewEntries.Add(entry);
-            }
-
-            ReviewCount = outcome.ForReview.Count(entry => entry.NeedsReview);
-            ApplyReviewFilter();
+            // 第9.0C.12轮：待审核列表统一走**分页入口**（完整集合 + 每页 5000 条，可翻页）。
+            // 修复前这里是"手工往 ReviewEntries 里塞 + ApplyReviewFilter()"：
+            // 而分页版 ApplyReviewFilter 以 _reviewAllEntries 为准（本路径从未填充它）
+            // ⇒ 过滤器把列表清空、界面显示"全量 0 条"，看起来载入进度后什么都没进来。
+            SetReviewSource(outcome.ForReview);
 
             OutputProgressStatusText =
                 $"已载入 {outcome.Applied.Count} 条（其中需 AI 的 {outcome.ForReview.Count} 条进入逐条列表）"
