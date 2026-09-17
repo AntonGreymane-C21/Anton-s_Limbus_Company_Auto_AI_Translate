@@ -688,7 +688,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// 将需要汉化的文件（新增/缺失/修改）提取到待翻译目录。
+    /// 将**当前勾选**的待汉化文件（新增/缺失/修改）提取到待翻译目录。
+    ///
+    /// 第9.0C.22轮（用户需求）：
+    ///   ① 只提取**当前勾选**、真正需要 AI 的文件（与翻译 / 部署同源的 SelectedFiles）；
+    ///   ② 提取前先**清空**待翻译目录（避免上一批残留）；
+    ///   ③ 提取后把勾选**全局收敛**为这批文件（其余标记为"本轮暂不处理"，可随时勾回）；
+    ///   ④ 写一份提取清单 ⇒ 重开程序后可「按上次提取恢复勾选」接着干。
     /// </summary>
     public async void ExtractNewFiles()
     {
@@ -697,29 +703,52 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        var selection = ResolveTaskSelection();
+        if (selection is null)
+        {
+            StatusText = "请先执行 Diff 分析，再提取待汉化文件";
+            Log("[调试] 提取：尚未分析（没有生产计划），已取消");
+            return;
+        }
+
+        if (selection.SelectedFiles.Count == 0)
+        {
+            StatusText = "请至少勾选一个需要处理的文件，再提取";
+            Log("[调试] 提取：当前没有勾选任何需要 AI 的文件，已取消");
+            return;
+        }
+
         var pendingDir = Path.Combine(FindProjectRoot(), "data", "work", "pending");
         var oldEnglishDir = OldEnglishDir;
         var oldChineseDir = OldChineseDir;
         var newEnglishDir = NewEnglishDir;
+        var selectedFiles = selection.SelectedFiles;
         IsBusy = true;
         StatusText = "提取中...";
-        BeginProgress("提取待汉化文件", "准备分析文件");
-        Log($"[调试] 正在提取需要汉化的文件到: {pendingDir}");
+        BeginProgress("提取待汉化文件", "清空上一批提取");
+        Log($"[调试] 提取：按当前勾选的 {selectedFiles.Count} 个文件提取到 {pendingDir}");
 
         try
         {
             var result = await Task.Run(() =>
             {
+                SetProgressStage("清空上一批提取");
+                var cleaned = CleanupPendingDirectory(pendingDir);
+
                 SetProgressStage("分析需要处理的文件");
                 var fileResult = _service.AnalyzeFiles(oldEnglishDir, oldChineseDir, newEnglishDir);
-                SetProgressStage("复制待汉化文件");
-                var extractResult = NewFileExtractor.Extract(newEnglishDir, fileResult.Entries, pendingDir);
-                return (FileResult: fileResult, ExtractResult: extractResult);
-            });
-            var extractResult = result.ExtractResult;
 
+                SetProgressStage("按当前勾选复制待汉化文件");
+                var extractResult = NewFileExtractor.Extract(
+                    newEnglishDir, fileResult.Entries, pendingDir,
+                    kinds: null, restrictToRelativePaths: selectedFiles);
+
+                return (FileResult: fileResult, ExtractResult: extractResult, Cleaned: cleaned);
+            });
+
+            var extractResult = result.ExtractResult;
             ExtractedCount = extractResult.CopiedCount;
-            Log($"[调试] 提取完成: {extractResult.CopiedCount} 个文件");
+            Log($"[调试] 提取完成: {extractResult.CopiedCount} 个文件（清空上一批 {result.Cleaned} 个）");
             foreach (var f in extractResult.Files.Take(20))
             {
                 Log($"[调试]   -> {f}");
@@ -728,7 +757,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             {
                 Log($"[调试]   ... 其余 {extractResult.Files.Count - 20} 个文件省略");
             }
-            StatusText = $"已提取 {extractResult.CopiedCount} 个文件";
+
+            // ③ 收敛勾选（全局只留这批）+ ④ 写提取清单（重开程序可恢复）
+            ConvergeSelectionToExtractedFiles(extractResult.LogicalFiles);
+            ExtractManifest.Save(pendingDir, extractResult.LogicalFiles, msg => Log(msg));
+
+            StatusText = $"已提取 {extractResult.CopiedCount} 个文件（勾选已收敛为这批）";
             CompleteProgress($"已提取 {extractResult.CopiedCount} 个文件");
         }
         catch (Exception ex)
@@ -741,6 +775,73 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>第9.0C.22轮：清空待翻译目录（返回删除的文件数；目录不存在时为 0）。</summary>
+    private int CleanupPendingDirectory(string pendingDir)
+    {
+        try
+        {
+            if (!Directory.Exists(pendingDir))
+            {
+                return 0;
+            }
+
+            var files = Directory.GetFiles(pendingDir, "*", SearchOption.AllDirectories);
+            Directory.Delete(pendingDir, recursive: true);
+            Log($"[调试] 已清空上一批提取：{files.Length} 个文件（{pendingDir}）");
+            return files.Length;
+        }
+        catch (Exception ex)
+        {
+            Log($"[调试] 清空待翻译目录失败（将继续提取）：{ex.Message}");
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// 第9.0C.22轮：把勾选**全局收敛**为本次提取的这批文件（其余全部取消）。
+    /// 只改选择状态，不改任何 Diff 动作；未提取的文件仍可在列表里随时勾回来。
+    /// </summary>
+    private void ConvergeSelectionToExtractedFiles(IReadOnlyList<string> logicalFiles)
+    {
+        _fileSelection.SelectNone(_allFileTasks.Select(row => row.LogicalFile));
+        _fileSelection.SelectAll(logicalFiles);
+        SyncRowsFromSelection();
+        Log($"[调试] 提取后已把勾选收敛为这 {logicalFiles.Count} 个文件（其余本轮暂不处理）");
+    }
+
+    /// <summary>
+    /// 第9.0C.22轮：按**上次提取清单**恢复勾选（重开程序后接着上次的活干）。
+    /// </summary>
+    public void RestoreSelectionFromLastExtract()
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        var pendingDir = Path.Combine(FindProjectRoot(), "data", "work", "pending");
+        var manifest = ExtractManifest.TryLoad(pendingDir);
+        if (manifest is null)
+        {
+            StatusText = "没有可用的提取清单（先做一次「提取待汉化文件」）";
+            Log($"[调试] 恢复勾选：未找到提取清单 {Path.Combine(pendingDir, ExtractManifest.FileName)}");
+            return;
+        }
+
+        var available = new HashSet<string>(_allFileTasks.Select(row => row.LogicalFile), StringComparer.OrdinalIgnoreCase);
+        var matched = manifest.Where(file => available.Contains(file)).ToList();
+
+        _fileSelection.SelectNone(_allFileTasks.Select(row => row.LogicalFile));
+        _fileSelection.SelectAll(matched);
+        SyncRowsFromSelection();
+
+        var missing = manifest.Count - matched.Count;
+        StatusText = $"已按上次提取恢复勾选：{matched.Count} 个文件"
+            + (missing > 0 ? $"（清单里 {missing} 个已不在当前计划中）" : string.Empty);
+        Log($"[调试] 恢复勾选：清单 {manifest.Count} 个，命中 {matched.Count} 个"
+            + (missing > 0 ? $"，{missing} 个已不在当前计划中" : string.Empty));
     }
 
     /// <summary>

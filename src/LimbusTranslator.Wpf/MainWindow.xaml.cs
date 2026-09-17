@@ -387,6 +387,13 @@ public partial class MainWindow : Window
     private void ClearFileTaskSearch_Click(object sender, RoutedEventArgs e)
         => _viewModel.ClearFileTaskSearch();
 
+    /// <summary>
+    /// 第9.0C.22轮：按上次「提取待汉化文件」的清单恢复勾选（全局只留这批文件），
+    /// 让重开程序后也能直接接着上次的活干。
+    /// </summary>
+    private void RestoreExtractSelection_Click(object sender, RoutedEventArgs e)
+        => _viewModel.RestoreSelectionFromLastExtract();
+
     private void ScanTerms_Click(object sender, RoutedEventArgs e)
         => _viewModel.ScanIncrementalTerms();
 

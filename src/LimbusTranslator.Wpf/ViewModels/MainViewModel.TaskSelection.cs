@@ -130,6 +130,13 @@ public sealed partial class MainViewModel
         // 第9.0C.17轮：分析 / 载入进度后同步「重译翻译失败的条目」按钮（失败标记只存在于当轮计划的条目上）
         CanRetranslateFailed = plan.OutputEntries.Any(entry => entry.ProviderBatchFailed);
 
+        // 第9.0C.22轮：若存在上次提取清单，提示可一键恢复勾选（"接着上次的活干"）
+        var lastExtract = ExtractManifest.TryLoad(Path.Combine(FindProjectRoot(), "data", "work", "pending"));
+        if (lastExtract is not null)
+        {
+            Log($"[调试] 检测到上次提取清单（{lastExtract.Count} 个文件）：可点「按上次提取恢复勾选」接着上次的活干");
+        }
+
         var summaries = TaskSelection.BuildSummaries(plan);
         _fileSelection.Reconcile(summaries.Select(summary => summary.LogicalFile));
 
