@@ -4,7 +4,7 @@
 
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
-![Tests](https://img.shields.io/badge/tests-812%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-1055%20passed-brightgreen)
 ![Warnings](https://img.shields.io/badge/build%20warnings-0-success)
 ![Status](https://img.shields.io/badge/status-work%20in%20progress-orange)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
@@ -21,11 +21,11 @@
 | 项目 | 内容 |
 |---|---|
 | 制作者 | **AntonGreymane** |
-| 统计截止 | **2026-09-16** |
-| 累计消耗 | **13.49E Token** |
-| 累计支出 | **62.01 元**（DeepSeek API） |
+| 统计截止 | **2026-09-17** |
+| 累计消耗 | **13.49E Token**（明细统计停在 09-16，之后仍在持续增加） |
+| 累计支出 | **约 100 元**（DeepSeek API，截至 2026-09-17） |
 | 当前产物 | 不完全版 AI 汉化（可用于测试、预览与流程验证） |
-| 后续计划 | 继续投入（预计再约 40 元）完成剩余功能 |
+| 后续计划 | 继续投入（预计再约 40 元）完成剩余文本 |
 
 **关于当前版本的说明**
 
@@ -227,10 +227,10 @@ Coordinator / TranslationAgent
 
 ```powershell
 dotnet build .\LimbusTranslator.slnx --no-restore            # 0 警告 / 0 错误
-dotnet test  .\LimbusTranslator.slnx --no-build --no-restore # 812 通过 / 0 失败 / 0 跳过
+dotnet test  .\LimbusTranslator.slnx --no-build --no-restore # 1055 通过 / 0 失败 / 0 跳过
 ```
 
-测试规模：Core 796 项 + 集成 16 项。覆盖重点：
+测试规模：Core 1039 项 + 集成 16 项。覆盖重点：
 
 - **Agent 级端到端**：真实 Diff → 生产计划 → Coordinator → TranslationAgent → 翻译记忆 / 请求缓存（Provider 使用假实现，真实网络请求数为 0）；
 - **四模式语义**：英文模式不得下发韩文；韩文模式必须下发韩文权威原文；仅参考文本变化不得触发重译；
@@ -253,7 +253,7 @@ LimbusTranslator.slnx
 │  ├─ LimbusTranslator.Cli/              命令行入口（翻译、耗时诊断、结构审计、演示工作区、受控冒烟）
 │  └─ LimbusTranslator.Wpf/              图形界面（主窗口、配置窗口、ViewModel）
 ├─ tests/
-│  ├─ LimbusTranslator.Core.Tests/       796 项：单元测试与 Agent 级端到端测试
+│  ├─ LimbusTranslator.Core.Tests/       1039 项：单元测试与 Agent 级端到端测试
 │  └─ LimbusTranslator.IntegrationTests/ 16 项：集成测试
 ├─ config/                               配置与术语库
 ├─ docs/                                 各轮实施与验收报告、架构设计文档
@@ -348,6 +348,26 @@ Paratranz 属于可选功能，失败仅影响远程术语同步，不影响本�
 ---
 
 ## 十七、版本记录
+
+### 2026-09-17（大更新）
+
+- **四模式全线打通**：英文 / 韩文＋英文 / 韩文＋日文 / 仅韩文四条链路都完成了真实 API 的端到端验证。韩文原文是语义权威，英文与日文仅作参考 —— **只有韩文变了才算"内容变了"**，仅参考文本变化不会触发重译。
+- **锁定术语强制闭环**：术语库里标为「锁定」的词条命中后会**自动修正一次**，修正后仍不合规才转人工确认；术语匹配支持复数与所有格（`Nursefather` ↔ `Nursefathers` / `Nursefather's`），术语库保存后**下一次翻译立即生效**。
+- **任务范围 + 文件自由勾选**：分类与文件两级选择，支持搜索、`Ctrl` / `Shift` 多选、右键批量勾选；**未勾选的文件本轮完全不动**（翻译 / 提取 / 输出 / 部署共用同一份选择）。
+- **提取待汉化文件升级**：只提取你勾选的文件，先清空待翻译目录，提取完把勾选**自动收敛为这一批**，并留下「提取清单」——重开程序可一键恢复上次的勾选。
+- **逐条审核体验**：可查看本轮**全部**译文（每页 5000 条，支持跳页 / 跳到指定文件 / 跳到第一个待审条目）；支持**批量替换**（可同时写入术语库、一步撤销）；可按问题类型筛选（锁定术语 / 占位符 / 标签 / 韩文残留 / 日文假名 / 空译文 / 本批翻译失败）。
+- **续做增量翻译**：「从 output 载入进度」现在同时读取 **output 与翻译记忆**；若仍不全，可一键「生成完整快照」把全部权威文件写出并立刻载入界面（不消耗 API）。
+- **失败自愈**：遇到空响应会自动关闭思考重试一次；某个批次失败只标记受影响的条目（不再整份文件报废）；新增「重译翻译失败的条目」按钮，可定向重翻。
+- **部署更安全**：「部署到汉化文件夹」会自动定位目标、**只部署勾选的文件**、先备份、失败回滚；部署前必须通过发布检查。
+- **性能与稳定性**：真实数据（6311 个文件 / 44.7 万条单元）完整分析约 **13.6 秒**且界面不卡；人工审核回写改为**单事务批量**（此前这一步会让界面假死）；修复了「重新输出会把未勾选文件一起写出」的范围错误。
+- **新增「RPG 玩法」分类**：`RPGSystem/` 目录与 `RPG*.json` 独立成组；分类统计与文件列表**同源**，不再出现「显示需要翻译却找不到文件」。
+- **其他修复**：台词里的 `<...>` 不再被误判为富文本标签；`maxTokens` 超范围会在配置校验阶段被拦下（API 4xx 也不会再无意义重试）；保存审核时的偶发空引用已修。
+
+**成本与反馈**（截至 2026-09-17）
+
+- 累计 API 支出约 **100 元**（DeepSeek）；
+- 有朋友试过之后反馈**汉化质量还不错** —— 谢谢信任 🙏 不过样本仍然有限，不同章节与文本类型的表现会有差异，欢迎继续反馈；
+- 已翻内容都留在本地翻译记忆里，后续只需增量补翻，不会重复消耗额度。
 
 | 日期 | 内容 |
 |---|---|
