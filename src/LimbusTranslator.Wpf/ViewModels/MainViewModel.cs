@@ -1164,16 +1164,15 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                         .ToList();
                 var finalTranslations = Coordinator.CollectTranslations(selectedEntries);
 
-                // 填充待审核列表（第9.0C.7轮：改为**本轮翻译的全部条目**，
-                // 让用户能逐条查看"没问题的译文是否精准"，而不只是有问题的；
-                // ReviewCount 语义不变（仍= NeedsReview 数量，顶部徽章不动）。
-                // 规模保护：上限 5000 条（真实数据：选 1 个文件 = 150 条；不选 = 3881 条），
-                // 超过时只加载前 N 条并明确提示用筛选 / 搜索收敛。
-                // 第9.0C.12轮：待审核列表改为「完整集合 + 分页（每页 5000 条）」。
-                // 旧做法 Take(5000) 会让排在第 5000 条之后的**整文件**在待审核页看不见
-                //（真实反馈：StoryData/S1000B.json 等十来個文件在待审核页完全没有）。
-                SetReviewSource(selectedEntries);
-                Log($"[调试] 待审核列表：本轮译文 {selectedEntries.Count} 条（分页浏览，每页 {ReviewPageSize} 条）");
+                // 填充待审核列表（第9.0C.26轮修复）：
+                // 待审核列表严格以「本轮选中的文件」为范围（SelectedReviewEntries），
+                // 绝不混入未勾选或无需 AI 的纯继承文件，彻底避免历史遗留标记污染待审核列表；
+                // 重译模式下（forcedKeys != null）则以受影响文件为范围。
+                var reviewEntries = forcedKeys is null
+                    ? taskSelection.SelectedReviewEntries
+                    : selectedEntries;
+                SetReviewSource(reviewEntries);
+                Log($"[调试] 待审核列表：本轮选中的 {(forcedKeys is null ? taskSelection.SelectedFiles.Count : affectedFiles.Count)} 个文件共 {reviewEntries.Count} 条（分页浏览，每页 {ReviewPageSize} 条）");
 
                 // 更新条目表格的译文（仅选中分类）
                 foreach (var e in selectedEntries)
