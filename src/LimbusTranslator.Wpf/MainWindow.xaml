@@ -336,7 +336,10 @@
                                                 <StackPanel Orientation="Horizontal">
                                                     <CheckBox IsChecked="{Binding IsSelected}" VerticalAlignment="Center"/>
                                                     <TextBlock Text="{Binding DisplayName}" Foreground="#31415C" FontWeight="SemiBold" Margin="6,0,0,0"/>
-                                                    <TextBlock Text="需译 " Foreground="#718096" FontSize="11" Margin="10,1,0,0"/>
+                                                    <!-- 第9.0C.25轮：显示本轮分类已选文件数，与下方文件勾选即时联动 -->
+                                                    <TextBlock Text="已选 " Foreground="#2E6BDE" FontSize="11" Margin="10,1,0,0"/>
+                                                    <TextBlock Text="{Binding SelectedFileCount}" Foreground="#2E6BDE" FontWeight="Bold" FontSize="11"/>
+                                                    <TextBlock Text=" / 需译 " Foreground="#718096" FontSize="11"/>
                                                     <TextBlock Text="{Binding NeedTranslateFileCount}" Foreground="#A6425D" FontWeight="Bold" FontSize="11"/>
                                                     <TextBlock Text=" / 总 " Foreground="#718096" FontSize="11"/>
                                                     <TextBlock Text="{Binding TotalFileCount}" Foreground="#53637B" FontWeight="Bold" FontSize="11"/>

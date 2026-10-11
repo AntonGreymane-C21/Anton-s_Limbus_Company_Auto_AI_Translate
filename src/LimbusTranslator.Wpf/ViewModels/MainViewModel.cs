@@ -555,6 +555,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             stat.SelectionChanged = OnTaskScopeChanged;
         }
+
+        // 第9.0C.25轮：初始与分类重构时同步计算已选数量
+        UpdateCategorySelectedCounts();
     }
 
     /// <summary>第9.0C.23轮：文件级 Diff 类型（逻辑路径 → 类型），仅用于"仅参考变化"统计。</summary>

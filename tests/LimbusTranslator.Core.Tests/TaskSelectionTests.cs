@@ -273,6 +273,35 @@ public sealed class TaskSelectionTests
         Assert.DoesNotContain("FileTasks.Where(row => row.IsSelected)", viewModel);
     }
 
+    [Fact]
+    public void 分类卡片显示已选数量且与文件选择联动()
+    {
+        var root = FindRepositoryRoot();
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "LimbusTranslator.Wpf", "MainWindow.xaml"));
+        var taskSelectionVm = File.ReadAllText(Path.Combine(
+            root, "src", "LimbusTranslator.Wpf", "ViewModels", "MainViewModel.TaskSelection.cs"));
+        var categoryStatCode = File.ReadAllText(Path.Combine(
+            root, "src", "LimbusTranslator.Wpf", "ViewModels", "CategoryStat.cs"));
+
+        // ① XAML 必须绑定 SelectedFileCount，且呈现三段式（已选 / 需译 / 总）
+        Assert.Contains("Text=\"{Binding SelectedFileCount}\"", xaml);
+        Assert.Contains("Text=\"已选 \"", xaml);
+        Assert.Contains("Text=\" / 需译 \"", xaml);
+        Assert.Contains("Text=\" / 总 \"", xaml);
+
+        // ② CategoryStat 包含 SelectedFileCount 属性与通知
+        Assert.Contains("public int SelectedFileCount", categoryStatCode);
+        Assert.Contains("_selectedFileCount = value;", categoryStatCode);
+        Assert.Contains("OnPropertyChanged();", categoryStatCode);
+
+        // ③ FileTaskRow 包含 Category 强类型属性
+        Assert.Contains("public required TextCategory Category", taskSelectionVm);
+
+        // ④ ViewModel 包含 UpdateCategorySelectedCounts 联动计算
+        Assert.Contains("UpdateCategorySelectedCounts()", taskSelectionVm);
+        Assert.Contains("stat.SelectedFileCount =", taskSelectionVm);
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -443,4 +472,5 @@ public sealed class TaskSelectionCountingTests
         Assert.Contains("输出将写出 6 个文件", result.Describe());
     }
 }
+
 
