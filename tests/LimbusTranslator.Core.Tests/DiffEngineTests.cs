@@ -129,5 +129,44 @@ public class DiffEngineTests
         Assert.True(parser.IsTranslatableField("content"));
         Assert.True(parser.IsTranslatableField("dataList.$.content"));
         Assert.True(parser.IsTranslatableField("dataList.$.levelList.$.desc"));
+        Assert.True(parser.IsTranslatableField("dlg"));
+        Assert.True(parser.IsTranslatableField("dataList.$.dlg"));
+        Assert.True(parser.IsTranslatableField("dataList[0].dlg"));
+    }
+
+    [Fact]
+    public void 播报员台词文件可正确解析()
+    {
+        var json = """
+            {
+              "dataList": [
+                {
+                  "id": "announcer_cheer_1_1",
+                  "dlg": "My clock isn’t a magic cure-all..."
+                },
+                {
+                  "id": "announcer_cheer_1_2",
+                  "dlg": "Try to be a bit more careful..."
+                }
+              ]
+            }
+            """;
+        var tempFile = Path.Combine(Path.GetTempPath(), $"EN_Announcer_Test_{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(tempFile, json);
+            var parser = new Infrastructure.Parsing.JsonGameFileParser();
+            var units = parser.Parse(tempFile, "BattleAnnouncerDlg/Announcer_Test.json");
+            Assert.Equal(2, units.Count);
+            Assert.Equal("announcer_cheer_1_1", units[0].RecordId);
+            Assert.Equal("dataList[0].dlg", units[0].FieldPath);
+            Assert.Equal("My clock isn’t a magic cure-all...", units[0].SourceText);
+            Assert.Equal("announcer_cheer_1_2", units[1].RecordId);
+            Assert.Equal("dataList[1].dlg", units[1].FieldPath);
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
     }
 }

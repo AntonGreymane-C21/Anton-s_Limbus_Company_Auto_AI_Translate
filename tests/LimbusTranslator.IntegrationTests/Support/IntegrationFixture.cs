@@ -92,7 +92,7 @@ public sealed partial class IntegrationFixture
 
         File.WriteAllText(Path.Combine(ConfigDir, "field_rules.json"), """
             {
-              "translatableFields": ["name", "desc", "add", "min", "content", "teller", "title", "place", "flavor", "tooltip", "keyword", "text", "subtitle"],
+              "translatableFields": ["name", "desc", "add", "min", "content", "teller", "title", "place", "flavor", "tooltip", "keyword", "text", "subtitle", "dlg"],
               "forbiddenFields": ["id", "model"]
             }
             """, new UTF8Encoding(false));

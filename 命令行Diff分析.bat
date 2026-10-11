@@ -3,6 +3,11 @@ chcp 65001 >nul
 title 边狱巴士自动增量汉化工具 - 命令行工具
 cd /d "%~dp0"
 
+if exist "%USERPROFILE%\.dotnet10\dotnet.exe" (
+    set "PATH=%USERPROFILE%\.dotnet10;%PATH%"
+    set "DOTNET_ROOT=%USERPROFILE%\.dotnet10"
+)
+
 echo ============================================
 echo   命令行模式：执行 Diff 分析
 echo   默认使用 data\testdata\ 下的测试数据

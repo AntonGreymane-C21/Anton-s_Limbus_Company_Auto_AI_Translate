@@ -3,13 +3,18 @@ chcp 65001 >nul
 title 边狱巴士自动增量汉化工具 - 启动器
 cd /d "%~dp0"
 
+if exist "%USERPROFILE%\.dotnet10\dotnet.exe" (
+    set "PATH=%USERPROFILE%\.dotnet10;%PATH%"
+    set "DOTNET_ROOT=%USERPROFILE%\.dotnet10"
+)
+
 echo ============================================
 echo   《边狱巴士》自动增量汉化工具 启动器
 echo ============================================
 echo.
 
-rem 第9.0C.3.1：改为「每次都先构建再启动」。
-rem 旧版本只在 exe 不存在时才构建，导致改完代码后双击本脚本仍然运行旧程序。
+rem 9.0C.3.1: 每次都先构建再启动
+rem 避免改完代码后仍然运行旧程序
 set PROJ=src\LimbusTranslator.Wpf\LimbusTranslator.Wpf.csproj
 set EXE=src\LimbusTranslator.Wpf\bin\Debug\net10.0-windows\LimbusTranslator.Wpf.exe
 

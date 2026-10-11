@@ -13,7 +13,7 @@ public sealed class FieldRules
     {
         "name", "desc", "add", "min", "content",
         "teller", "title", "place", "flavor",
-        "tooltip", "keyword", "text", "subtitle",
+        "tooltip", "keyword", "text", "subtitle", "dlg",
     };
 
     /// <summary>禁止翻译的字段黑名单（优先）</summary>

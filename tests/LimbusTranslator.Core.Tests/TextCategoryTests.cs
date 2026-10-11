@@ -29,4 +29,22 @@ public class TextCategoryTests
         Assert.Equal("播报员台词", TextCategoryHelper.GetDisplayName(TextCategory.BattleAnnouncerDlg));
         Assert.Equal("一般文本", TextCategoryHelper.GetDisplayName(TextCategory.General));
     }
+
+    [Fact]
+    public void 播报员目录文件解析_分类为播报员台词且能提取台词条目()
+    {
+        var parser = new Infrastructure.Parsing.JsonGameFileParser();
+        var localizeEnAnnouncer = Path.Combine(AppContext.BaseDirectory, "../../../../Localize/en/BattleAnnouncerDlg/EN_Announcer_Dante_1.json");
+        if (File.Exists(localizeEnAnnouncer))
+        {
+            var units = parser.Parse(localizeEnAnnouncer, "BattleAnnouncerDlg/Announcer_Dante_1.json");
+            Assert.NotEmpty(units);
+            Assert.All(units, u =>
+            {
+                Assert.Equal(TextCategory.BattleAnnouncerDlg, TextCategoryHelper.FromRelativePath(u.FilePath));
+                Assert.EndsWith(".dlg", u.FieldPath);
+                Assert.False(string.IsNullOrWhiteSpace(u.SourceText));
+            });
+        }
+    }
 }
