@@ -62,6 +62,17 @@ public sealed class LockedTerminologyRepairTests : IDisposable
         return ActiveGlossarySnapshot.FromEntries(entries, sourcePath: null);
     }
 
+    private static ActiveGlossarySnapshot Glossary(params (string Term, string Translation, bool Locked, string? Meaning)[] terms)
+    {
+        var entries = new Dictionary<string, GlossaryEntry>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (term, translation, locked, meaning) in terms)
+        {
+            entries[term] = new GlossaryEntry { Translation = translation, Locked = locked, Meaning = meaning };
+        }
+
+        return ActiveGlossarySnapshot.FromEntries(entries, sourcePath: null);
+    }
+
     private MultilingualCaptureResult CaptureKrChanged(string english = EnglishSource)
         => _harness.CaptureAfterBaseline(
             new E2ESources(new[] { KoreanA }, new[] { english }, null),
@@ -463,6 +474,255 @@ public sealed class LockedTerminologyRepairTests : IDisposable
         {
             Assert.Null(repairItem.CanonicalKorean);
         }
+    }
+
+    // ───────── §三十九 术语Meaning模型与Prompt及序列化 ─────────
+
+    [Fact]
+    public void GlossaryEntry_与_TerminologyRequirement_带Meaning时的序列化反序列化与Prompt格式化()
+    {
+        // 1. TerminologyRequirement 属性与 ToString
+        var reqWithMeaning = new TerminologyRequirement
+        {
+            Source = "Burn",
+            Target = "烧伤",
+            Locked = true,
+            Meaning = "状态效果名",
+        };
+        Assert.Equal("状态效果名", reqWithMeaning.Meaning);
+        Assert.Equal("Burn → 烧伤（含义：状态效果名）(locked)", reqWithMeaning.ToString());
+
+        var reqWithoutMeaning = new TerminologyRequirement
+        {
+            Source = "Burn",
+            Target = "烧伤",
+            Locked = true,
+        };
+        Assert.Null(reqWithoutMeaning.Meaning);
+        Assert.Equal("Burn → 烧伤(locked)", reqWithoutMeaning.ToString());
+
+        // 2. GlossaryService BuildGlossaryPrompt 格式化
+        var entries = new Dictionary<string, GlossaryEntry>
+        {
+            ["Burn"] = new() { Translation = "烧伤", Locked = true, Meaning = "状态效果名" },
+            ["Manager"] = new() { Translation = "管理人", Locked = true, Meaning = "但丁的称号" },
+            ["Dante"] = new() { Translation = "但丁", Locked = true },
+            ["Move-in Reg."] = new() { Translation = "迁入登记", Locked = false },
+            ["CustomTerm"] = new() { Translation = "自定义", Locked = false, Meaning = "测试含义" },
+        };
+        var prompt = GlossaryService.BuildGlossaryPrompt(entries);
+        Assert.Contains("Burn → 烧伤（含义：状态效果名）", prompt);
+        Assert.Contains("Manager → 管理人（含义：但丁的称号）", prompt);
+        Assert.Contains("Dante → 但丁", prompt);
+        Assert.DoesNotContain("Dante → 但丁（含义：", prompt);
+        Assert.Contains("CustomTerm → 自定义（含义：测试含义）", prompt);
+
+        // 3. GlossaryService Load / Save 序列化 round-trip
+        var tempDir = Path.Combine(Path.GetTempPath(), "limbus_meaning_test_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(tempDir);
+            var filePath = Path.Combine(tempDir, "glossary.json");
+
+            var rawJson = """
+            {
+              "Burn": {
+                "translation": "烧伤",
+                "locked": true,
+                "meaning": "状态效果名"
+              },
+              "OldTerm": {
+                "Translation": "旧格式",
+                "Locked": true,
+                "Meaning": "大写字段"
+              },
+              "PlainTerm": {
+                "translation": "无含义",
+                "locked": false
+              }
+            }
+            """;
+            File.WriteAllText(filePath, rawJson);
+
+            var service = new GlossaryService(tempDir);
+            Assert.Equal("状态效果名", service.Entries["Burn"].Meaning);
+            Assert.Equal("大写字段", service.Entries["OldTerm"].Meaning);
+            Assert.Null(service.Entries["PlainTerm"].Meaning);
+
+            // 更新与保存
+            service.Update("Burn", "烧伤", locked: true); // 不传 meaning 时保留原 Meaning
+            Assert.Equal("状态效果名", service.Entries["Burn"].Meaning);
+            service.Update("NewTerm", "新术语", locked: true, meaning: "全新含义");
+            service.Save();
+
+            var reloaded = new GlossaryService(tempDir);
+            Assert.Equal("状态效果名", reloaded.Entries["Burn"].Meaning);
+            Assert.Equal("全新含义", reloaded.Entries["NewTerm"].Meaning);
+            Assert.Null(reloaded.Entries["PlainTerm"].Meaning);
+
+            var savedText = File.ReadAllText(filePath);
+            Assert.Contains("\"meaning\": \"状态效果名\"", savedText);
+            Assert.Contains("\"meaning\": \"全新含义\"", savedText);
+            Assert.DoesNotContain("\"meaning\": null", savedText);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void DefaultEntries与配置_包含典型易歧义术语的Meaning()
+    {
+        // 验证 DefaultEntries
+        Assert.True(GlossaryService.DefaultEntries.TryGetValue("Burn", out var burn));
+        Assert.Equal("状态效果名", burn.Meaning);
+
+        Assert.True(GlossaryService.DefaultEntries.TryGetValue("Manager", out var manager));
+        Assert.Equal("但丁的称号", manager.Meaning);
+
+        Assert.True(GlossaryService.DefaultEntries.TryGetValue("Voice", out var voice));
+        Assert.Equal("神秘声音", voice.Meaning);
+
+        var statusEffects = new[] { "Bleed", "Tremor", "Rupture", "Sinking", "Poise", "Charge" };
+        foreach (var name in statusEffects)
+        {
+            Assert.True(GlossaryService.DefaultEntries.TryGetValue(name, out var entry), $"缺少默认术语 {name}");
+            Assert.Equal("状态效果名", entry.Meaning);
+        }
+    }
+
+    // ───────── §四十 锁定术语模型判定非该术语时保留原译文转人工 ─────────
+
+    private sealed class FakeRepairProvider : ITranslationProvider, ILockedTerminologyRepairProvider
+    {
+        private readonly Func<DiffEntry, IReadOnlyList<TerminologyRequirement>, string, LockedTerminologyRepairResult> _handler;
+
+        public FakeRepairProvider(Func<DiffEntry, IReadOnlyList<TerminologyRequirement>, string, LockedTerminologyRepairResult> handler)
+        {
+            _handler = handler;
+        }
+
+        public string Name => "FakeRepairProvider";
+
+        public Task<LockedTerminologyRepairResult> RepairLockedTerminologyAsync(
+            DiffEntry entry,
+            IReadOnlyList<TerminologyRequirement> lockedTerms,
+            string currentTranslation,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(_handler(entry, lockedTerms, currentTranslation));
+
+        public Task<IReadOnlyDictionary<string, TranslationResult>> TranslateAsync(
+            IReadOnlyList<DiffEntry> entries,
+            CancellationToken cancellationToken = default,
+            string? stageId = null,
+            IReadOnlyDictionary<string, TranslationContext>? contexts = null)
+            => Task.FromResult<IReadOnlyDictionary<string, TranslationResult>>(
+                new Dictionary<string, TranslationResult>());
+    }
+
+    [Fact]
+    public async Task 锁定术语修正_模型判定此处非该术语时保留原译文并转人工审核()
+    {
+        const string originalTranslation = "焚烧并熔化";
+        var entry = new DiffEntry
+        {
+            Key = new UnitKey { RelativeFilePath = "story.json", RecordId = "100", FieldPath = "content" },
+            NewSourceText = "...annihilation that burns and melts...",
+            Translation = originalTranslation,
+            DiffKind = DiffKind.Modified,
+            Action = TranslationAction.TranslateModified,
+            MatchedTerms = new[]
+            {
+                new TerminologyRequirement
+                {
+                    Source = "Burn",
+                    Target = "烧伤",
+                    Locked = true,
+                    Meaning = "状态效果名",
+                },
+            },
+        };
+
+        var provider = new FakeRepairProvider((e, terms, current) => new LockedTerminologyRepairResult
+        {
+            Attempted = true,
+            Translation = current,
+            NeedsReview = true,
+            ReviewReason = "此处不是该术语：burns 为普通动词",
+            RequestId = "repair-test-1",
+        });
+
+        var validation = new ValidationPipeline();
+        var initialReport = validation.ValidateAndApply(entry);
+        Assert.True(HasIssue(entry, ValidationIssueCodes.TerminologyMismatch));
+
+        var repairService = new LockedTerminologyRepairService(provider, validation);
+        var outcome = await repairService.TryRepairAsync(entry, initialReport);
+
+        // ① 修正尝试被记录为 1 次，但没有当做普通错误回滚
+        Assert.True(outcome.Attempted);
+        Assert.Equal(1, outcome.AttemptCount);
+        Assert.False(outcome.Succeeded);
+
+        // ② 原译文被完整保留
+        Assert.Equal(originalTranslation, entry.Translation);
+
+        // ③ 标记 NeedsReview 并记录详细说明
+        Assert.True(entry.NeedsReview);
+        Assert.Equal(1, entry.TerminologyRepairAttempts);
+        Assert.False(entry.TerminologyRepairSucceeded);
+        Assert.Contains("模型判定此处非该术语", entry.TerminologyRepairNote);
+        Assert.Contains("burns 为普通动词", entry.TerminologyRepairNote);
+        Assert.Contains("已保留原译文并转人工审核", entry.TerminologyRepairNote);
+
+        // ④ 不包含普通回滚的错误信息
+        Assert.DoesNotContain(entry.ValidationIssues,
+            issue => issue.Message.Contains("锁定术语自动修正被拒绝（修正结果引入结构问题）"));
+    }
+
+    [Fact]
+    public async Task 锁定术语_端到端流水线_模型判定非该术语时保留原译文并记录修词说明()
+    {
+        const string englishText = "...annihilation that burns and melts...";
+        const string originalTranslation = "毁灭与焚烧";
+
+        var capture = CaptureKrChanged(englishText);
+        var client = new FakeE2EBatchClient
+        {
+            ScriptedItem = (callIndex, item) => callIndex == 0
+                // 首次翻译：生成包含普通词焚烧的译文
+                ? (originalTranslation, false, string.Empty)
+                // 自动修正响应：判定非该术语
+                : (originalTranslation, true, "此处不是该术语：burns 为普通动词"),
+        };
+
+        var run = await _harness.RunProductionChainAsync(
+            TranslationMode.KoreanEnglish,
+            capture,
+            oldChinese: null,
+            Factory(client, TranslationMode.KoreanEnglish),
+            glossarySnapshot: Glossary(("Burn", "烧伤", true, "状态效果名")));
+
+        var entry = Assert.Single(run.Plan.OutputEntries);
+
+        // ① 发生 2 次调用（1次翻译 + 1次修正）
+        Assert.Equal(2, client.BatchCallCount);
+
+        // ② 修正请求携带了含义说明
+        var repairItem = Assert.Single(client.RepairItems);
+        Assert.Contains("Burn → 烧伤（含义：状态效果名）", repairItem.LockedTerms);
+
+        // ③ 最终采用原译文，并转人工审核
+        Assert.Equal(originalTranslation, entry.Translation);
+        Assert.True(entry.NeedsReview);
+        Assert.Equal(1, entry.TerminologyRepairAttempts);
+        Assert.False(entry.TerminologyRepairSucceeded);
+        Assert.Contains("模型判定此处非该术语", entry.TerminologyRepairNote);
+        Assert.Contains("burns 为普通动词", entry.TerminologyRepairNote);
     }
 }
 

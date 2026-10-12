@@ -608,6 +608,9 @@ internal sealed class FakeE2EBatchClient : IDeepSeekBatchClient
     /// </summary>
     public Func<int, DeepSeekTranslateRequestItem, string>? ScriptedTranslation { get; set; }
 
+    /// <summary>按**调用序号**脚本化的假译文项（含 NeedsReview 与 Reason）。</summary>
+    public Func<int, DeepSeekTranslateRequestItem, (string Translation, bool NeedsReview, string Reason)>? ScriptedItem { get; set; }
+
     /// <summary>锁定术语修正请求收到的条目（第9.0C.2轮）。</summary>
     public IReadOnlyList<DeepSeekTranslateRequestItem> RepairItems
         => AllItems.Where(item => !string.IsNullOrEmpty(item.LockedTerms)).ToList();
@@ -750,7 +753,15 @@ internal sealed class FakeE2EBatchClient : IDeepSeekBatchClient
         {
             Items = items.ToDictionary(
                 item => item.Id,
-                item => new DeepSeekTranslateItem(item.Id, FakeTranslation(item), NeedsReview: false, Reason: string.Empty),
+                item =>
+                {
+                    if (ScriptedItem is not null)
+                    {
+                        var tuple = ScriptedItem(callIndex, item);
+                        return new DeepSeekTranslateItem(item.Id, tuple.Translation, tuple.NeedsReview, tuple.Reason);
+                    }
+                    return new DeepSeekTranslateItem(item.Id, FakeTranslation(item), NeedsReview: false, Reason: string.Empty);
+                },
                 StringComparer.Ordinal),
             ResponseId = "fake-e2e-response",
             ResponseModel = "fake-e2e-model",

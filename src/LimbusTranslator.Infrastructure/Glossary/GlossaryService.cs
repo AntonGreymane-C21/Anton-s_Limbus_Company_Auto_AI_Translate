@@ -28,6 +28,9 @@ public sealed class GlossaryEntry
 
     /// <summary>术语来源（本地 / Paratranz）</summary>
     public GlossaryTermSource Source { get; init; } = GlossaryTermSource.Local;
+
+    /// <summary>术语含义说明（如“状态效果名”“但丁的称号”）</summary>
+    public string? Meaning { get; init; }
 }
 
 /// <summary>
@@ -63,13 +66,13 @@ public sealed class GlossaryService
     /// <summary>内置默认术语（恢复默认用，与 config/glossary.json 同步）</summary>
     public static readonly IReadOnlyDictionary<string, GlossaryEntry> DefaultEntries = new Dictionary<string, GlossaryEntry>
     {
-        ["Sinking"] = new() { Translation = "沉沦", Locked = true },
-        ["Bleed"] = new() { Translation = "流血", Locked = true },
-        ["Rupture"] = new() { Translation = "破裂", Locked = true },
-        ["Tremor"] = new() { Translation = "震颤", Locked = true },
-        ["Burn"] = new() { Translation = "烧伤", Locked = true },
-        ["Poise"] = new() { Translation = "呼吸法", Locked = true },
-        ["Charge"] = new() { Translation = "充能", Locked = true },
+        ["Sinking"] = new() { Translation = "沉沦", Locked = true, Meaning = "状态效果名" },
+        ["Bleed"] = new() { Translation = "流血", Locked = true, Meaning = "状态效果名" },
+        ["Rupture"] = new() { Translation = "破裂", Locked = true, Meaning = "状态效果名" },
+        ["Tremor"] = new() { Translation = "震颤", Locked = true, Meaning = "状态效果名" },
+        ["Burn"] = new() { Translation = "烧伤", Locked = true, Meaning = "状态效果名" },
+        ["Poise"] = new() { Translation = "呼吸法", Locked = true, Meaning = "状态效果名" },
+        ["Charge"] = new() { Translation = "充能", Locked = true, Meaning = "状态效果名" },
         ["Haste"] = new() { Translation = "迅捷", Locked = true },
         ["Bind"] = new() { Translation = "束缚", Locked = true },
         ["Fragile"] = new() { Translation = "易损", Locked = true },
@@ -97,7 +100,8 @@ public sealed class GlossaryService
         ["Lunacy"] = new() { Translation = "狂气", Locked = true },
         ["Enkephalin"] = new() { Translation = "脑啡肽", Locked = true },
         ["Sinner"] = new() { Translation = "罪人", Locked = true },
-        ["Manager"] = new() { Translation = "管理人", Locked = true },
+        ["Manager"] = new() { Translation = "管理人", Locked = true, Meaning = "但丁的称号" },
+        ["Voice"] = new() { Translation = "声音", Locked = true, Meaning = "神秘声音" },
         ["E.G.O"] = new() { Translation = "E.G.O", Locked = true },
         ["SP"] = new() { Translation = "理智值", Locked = true },
         ["HP"] = new() { Translation = "体力值", Locked = true },
@@ -157,11 +161,18 @@ public sealed class GlossaryService
                 continue;
             }
 
-            payload[kv.Key] = new Dictionary<string, object>(StringComparer.Ordinal)
+            var entryDict = new Dictionary<string, object>(StringComparer.Ordinal)
             {
                 ["translation"] = kv.Value.Translation,
                 ["locked"] = kv.Value.Locked,
             };
+
+            if (!string.IsNullOrWhiteSpace(kv.Value.Meaning))
+            {
+                entryDict["meaning"] = kv.Value.Meaning;
+            }
+
+            payload[kv.Key] = entryDict;
         }
 
         var json = System.Text.Json.JsonSerializer.Serialize(payload, CanonicalJsonOptions);
@@ -223,7 +234,7 @@ public sealed class GlossaryService
     /// 第8.87轮：<paramref name="translation"/> 为 null/空/纯空白时**拒绝写入空译名**
     /// （保留已有译名或作为未完成项），返回 false。避免“只有原文、译文为空”的坏数据进入术语库。
     /// </summary>
-    public bool Update(string english, string translation, bool locked)
+    public bool Update(string english, string translation, bool locked, string? meaning = null)
     {
         if (string.IsNullOrWhiteSpace(english))
         {
@@ -235,7 +246,18 @@ public sealed class GlossaryService
             return false;
         }
 
-        _entries[english] = new GlossaryEntry { Translation = translation.Trim(), Locked = locked };
+        var effectiveMeaning = meaning;
+        if (effectiveMeaning is null && _entries.TryGetValue(english, out var existing))
+        {
+            effectiveMeaning = existing.Meaning;
+        }
+
+        _entries[english] = new GlossaryEntry
+        {
+            Translation = translation.Trim(),
+            Locked = locked,
+            Meaning = string.IsNullOrWhiteSpace(effectiveMeaning) ? null : effectiveMeaning.Trim(),
+        };
         return true;
     }
 
@@ -271,6 +293,7 @@ public sealed class GlossaryService
             {
                 var translation = string.Empty;
                 var locked = false;
+                string? meaning = null;
                 if (prop.Value.ValueKind == JsonValueKind.Object)
                 {
                     if (TryGetPropertyIgnoreCase(prop.Value, "translation", out var t) && t.ValueKind == JsonValueKind.String)
@@ -282,9 +305,14 @@ public sealed class GlossaryService
                     {
                         locked = l.ValueKind == JsonValueKind.True;
                     }
+
+                    if (TryGetPropertyIgnoreCase(prop.Value, "meaning", out var m) && m.ValueKind == JsonValueKind.String)
+                    {
+                        meaning = m.GetString();
+                    }
                 }
 
-                _entries[prop.Name] = new GlossaryEntry { Translation = translation, Locked = locked };
+                _entries[prop.Name] = new GlossaryEntry { Translation = translation, Locked = locked, Meaning = meaning };
             }
 
             EmptyTranslationKeys = _entries
@@ -388,19 +416,24 @@ public sealed class GlossaryService
 
         var sections = new List<string>();
 
+        static string FormatTerm(KeyValuePair<string, GlossaryEntry> kv) =>
+            !string.IsNullOrWhiteSpace(kv.Value.Meaning)
+                ? $"{kv.Key} → {kv.Value.Translation}（含义：{kv.Value.Meaning}）"
+                : $"{kv.Key} → {kv.Value.Translation}";
+
         if (locked.Count > 0)
         {
             sections.Add(
                 "【强制术语（Locked）】只要原文中的对应词具有该术语含义，就必须使用指定中文译名，" +
                 "不得自行音译、改写、同义替换或省略：\n" +
-                string.Join("\n", locked.Select(kv => $"{kv.Key} → {kv.Value.Translation}")));
+                string.Join("\n", locked.Select(FormatTerm)));
         }
 
         if (preferred.Count > 0)
         {
             sections.Add(
                 "【优先术语（参考）】默认优先使用以下译法；若语境明确不是该术语含义，可按语境处理：\n" +
-                string.Join("\n", preferred.Select(kv => $"{kv.Key} → {kv.Value.Translation}")));
+                string.Join("\n", preferred.Select(FormatTerm)));
         }
 
         return sections.Count == 0 ? string.Empty : string.Join("\n\n", sections);

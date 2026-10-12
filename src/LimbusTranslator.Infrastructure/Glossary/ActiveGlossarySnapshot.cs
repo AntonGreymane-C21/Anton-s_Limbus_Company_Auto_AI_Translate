@@ -141,6 +141,7 @@ public sealed class ActiveGlossarySnapshot
             {
                 Translation = kv.Value?.Translation ?? string.Empty,
                 Locked = kv.Value?.Locked ?? false,
+                Meaning = kv.Value?.Meaning,
                 // 第8.89轮：来源（Local / Paratranz）必须随快照保留，否则诊断与优先级判断会失真
                 Source = kv.Value?.Source ?? GlossaryTermSource.Local,
             };

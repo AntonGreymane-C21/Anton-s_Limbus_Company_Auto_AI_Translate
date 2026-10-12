@@ -135,9 +135,11 @@ public static class DeepSeekRequestComposer
     /// </summary>
     public const string RepairRule =
         "锁定术语修订任务（重要）：本次不是重新翻译，而是修订一条已经完成的中文译文。\n"
-        + "items[].MustUseTerms 中列出的是【锁定术语】，属于强制规则：最终译文必须使用其中指定的中文译法，"
+        + "items[].MustUseTerms 中列出了【锁定术语】及其含义说明。当原文具有该术语含义时，属于强制规则：最终译文必须使用其中指定的中文译法，"
         + "不得使用同义词、近义词、意译或自行改写术语本身。\n"
-        + "在尽量保持当前译文（items[].CurrentTranslation）其它内容不变的前提下，只修正术语违规。\n"
+        + "【语境判断规则】若根据上下文语境，原文中的词语在此处【并非该术语含义】（例如普通动词焚烧 burns、普通职位 Head Manager、普通系统语音 Story Voice 等非专有名词语境），"
+        + "允许判定为【此处不是该术语】；判定为【此处不是该术语】时：必须在 translation 中保留原译文（CurrentTranslation），设置 needs_review: true，并在 reason 字段中明确注明「此处不是该术语：（说明原因）」。\n"
+        + "在确认原文确实属于该术语含义的前提下，尽量保持当前译文（items[].CurrentTranslation）其它内容不变，只修正术语违规。\n"
         + "禁止：删除原有信息、添加原文没有的信息、修改数字、修改占位符（如 {0}）、修改富文本标签、"
         + "修改角色名、改动不相关句子。\n"
         + "输出格式与普通翻译请求完全一致：仍然返回 items 数组，id 原样返回，translation 为修正后的完整中文译文。";

@@ -355,6 +355,7 @@ public static class ProductionTranslationPlanBuilder
                         Source = hit.Key,
                         Target = hit.Value.Translation ?? string.Empty,
                         Locked = hit.Value.Locked,
+                        Meaning = hit.Value.Meaning,
                     })
                     .ToList();
 

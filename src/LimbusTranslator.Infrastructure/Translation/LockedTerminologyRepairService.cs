@@ -119,6 +119,36 @@ public sealed class LockedTerminologyRepairService
             };
         }
 
+        // 检测模型的返回是否属于"此处不是该术语"
+        if (IsNotTermDecision(result))
+        {
+            entry.Translation = originalTranslation;
+            var restoredReport = _validation.ValidateAndApply(entry, preexistingIssues);
+            entry.NeedsReview = true;
+            entry.TerminologyRepairAttempts = MaxAttempts;
+            entry.TerminologyRepairSucceeded = false;
+            entry.TerminologyRepairNote = $"模型判定此处非该术语：{result.ReviewReason}，已保留原译文并转人工审核";
+            if (!string.IsNullOrWhiteSpace(result.ReviewReason))
+            {
+                entry.ReviewReason = result.ReviewReason;
+            }
+
+            _log?.Invoke($"[调试] 锁定术语自动修正：模型判定非该术语（{result.ReviewReason}），已保留原译文并转人工审核");
+
+            return new LockedTerminologyRepairOutcome
+            {
+                Attempted = true,
+                AttemptCount = MaxAttempts,
+                Succeeded = false,
+                Translation = entry.Translation,
+                Violations = violations,
+                RemainingViolations = violations,
+                RequestId = result.RequestId,
+                CacheHit = result.CacheHit,
+                Note = entry.TerminologyRepairNote,
+            };
+        }
+
         if (string.IsNullOrWhiteSpace(result.Translation))
         {
             _log?.Invoke($"[调试] 锁定术语自动修正：失败（{result.SkipReason ?? "返回为空"}），保留原译文并转人工审核");
@@ -216,5 +246,23 @@ public sealed class LockedTerminologyRepairService
             CacheHit = result.CacheHit,
             Note = remaining.Count == 0 ? "修正成功" : $"仍有 {remaining.Count} 条违规",
         };
+    }
+
+    /// <summary>
+    /// 检测模型是否判定此处非该术语含义（例如普通动词 burns、普通职位 Head Manager、系统语音 Story Voice 等非专有名词语境）。
+    /// </summary>
+    private static bool IsNotTermDecision(LockedTerminologyRepairResult result)
+    {
+        if (string.IsNullOrWhiteSpace(result.ReviewReason))
+        {
+            return false;
+        }
+
+        var reason = result.ReviewReason;
+        return reason.Contains("不是该术语", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("非该术语", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("not a term", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("不是术语", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("非术语", StringComparison.OrdinalIgnoreCase);
     }
 }
