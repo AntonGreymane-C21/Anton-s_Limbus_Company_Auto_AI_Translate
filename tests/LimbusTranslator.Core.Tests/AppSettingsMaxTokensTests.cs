@@ -8,7 +8,7 @@ namespace LimbusTranslator.Core.Tests;
 ///
 /// 真实故障：配置写成 1000000 —— 旧校验上限是 1,000,000（写错），于是配置"合法"，
 /// 请求却被 DeepSeek 以 400 invalid_request_error 拒绝。
-/// 现在上限 = 393216（服务端真实上限），超范围 ⇒ 报错 + 保持安全默认值 8192。
+/// 现在上限 = 393216（服务端真实上限），超范围 ⇒ 报错 + 保持安全默认值 16384。
 /// </summary>
 public sealed class AppSettingsMaxTokensTests : IDisposable
 {
@@ -59,8 +59,8 @@ public sealed class AppSettingsMaxTokensTests : IDisposable
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e => e.Contains("maxTokens 超出允许范围"));
         Assert.Contains(result.Errors, e => e.Contains("393216"));
-        Assert.Contains(result.Errors, e => e.Contains("建议 8192"));
-        Assert.Equal(8192, result.Options.MaxTokens);   // 回落到安全默认值，绝不把非法值发出去
+        Assert.Contains(result.Errors, e => e.Contains("建议 16384"));
+        Assert.Equal(16384, result.Options.MaxTokens);   // 回落到安全默认值，绝不把非法值发出去
     }
 
     [Fact]
@@ -78,6 +78,16 @@ public sealed class AppSettingsMaxTokensTests : IDisposable
         var result = LoadWithMaxTokens(null);
 
         Assert.True(result.Success);
-        Assert.Equal(8192, result.Options.MaxTokens);
+        Assert.Equal(16384, result.Options.MaxTokens);
+    }
+
+    [Fact]
+    public void DeepSeekOptions及AppSettingsLoader默认MaxTokens为16384()
+    {
+        var options = new DeepSeekOptions();
+        Assert.Equal(16384, options.MaxTokens);
+
+        var loaded = AppSettingsLoader.LoadDeepSeek(Path.Combine(Path.GetTempPath(), "non_existent_" + Guid.NewGuid().ToString("N")));
+        Assert.Equal(16384, loaded.MaxTokens);
     }
 }

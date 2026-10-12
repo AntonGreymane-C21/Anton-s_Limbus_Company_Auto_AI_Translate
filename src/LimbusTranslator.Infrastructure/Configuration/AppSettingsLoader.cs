@@ -251,7 +251,7 @@ public static class AppSettingsLoader
             configuredOptionals += ReadNumber(
                 ds, "maxTokens", 1d, 393_216d, errors,
                 value => options.MaxTokens = (int)value,
-                hint: "建议 8192 ~ 16384；超过服务端上限会导致 API 返回 400");
+                hint: "建议 16384；超过服务端上限会导致 API 返回 400");
             configuredOptionals += ReadNumber(ds, "timeoutSeconds", 1d, 3600d, errors, value => options.TimeoutSeconds = (int)value);
             configuredOptionals += ReadNumber(ds, "maxRetry", 0d, 100d, errors, value => options.MaxRetry = (int)value);
             configuredOptionals += ReadNumber(ds, "maxConcurrentRequests", 1d, 1000d, errors, value => options.MaxConcurrentRequests = (int)value);
