@@ -276,6 +276,7 @@ public sealed class ValidationPipeline
                 Source = hit.Key,
                 Target = hit.Value.Translation ?? string.Empty,
                 Locked = hit.Value.Locked,
+                Meaning = hit.Value.Meaning,
             });
         }
 

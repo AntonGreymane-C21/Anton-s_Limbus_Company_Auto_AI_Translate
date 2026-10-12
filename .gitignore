@@ -36,3 +36,6 @@ config/appsettings.json
 # 另外作者本地还保留了含报告的旧分支 master（历史归档，不要推送）。
 docs/*
 !docs/README.md
+
+# 界面模式偏好（简易 / 专家，本机记忆）
+data/ui_prefs.json

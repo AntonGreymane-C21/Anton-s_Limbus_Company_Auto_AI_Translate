@@ -366,6 +366,7 @@ public sealed partial class MainViewModel
     internal void BeginGuiAnalyze()
     {
         _workflow.BeginAnalyze();
+        ResetSimpleFlowForRun();   // 简易模式：新一轮分析 ⇒ 之前的输出 / 审核修改 / 部署结果不再代表当前这一轮
         NotifyWorkflowBindings();
     }
 
@@ -400,6 +401,7 @@ public sealed partial class MainViewModel
     internal void BeginGuiTranslate()
     {
         _workflow.BeginTranslate();
+        ResetSimpleFlowForRun();   // 简易模式：新一轮翻译 ⇒ 等待新的输出
         NotifyWorkflowBindings();
     }
 

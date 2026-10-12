@@ -139,4 +139,68 @@ public class ProviderBatchBuilderTests
         Assert.Equal(Describe(first), Describe(second));
         Assert.Equal(new[] { 4, 4, 3 }, Sizes(first));
     }
+
+    private static DiffEntry MakeStoryEntry(int index, string source = "abc")
+        => new()
+        {
+            Key = new UnitKey
+            {
+                RelativeFilePath = "StoryData/1D101A.json",
+                RecordId = index.ToString(),
+                FieldPath = $"dataList[{index}].content",
+            },
+            NewSourceText = source,
+            DiffKind = DiffKind.Added,
+            Action = TranslationAction.TranslateNew,
+        };
+
+    private static List<DiffEntry> MakeStoryEntries(int count, string source = "abc")
+        => Enumerable.Range(0, count).Select(i => MakeStoryEntry(i, source)).ToList();
+
+    [Fact]
+    public void StoryData_批次条目数自动减半_20条分两批各10条()
+    {
+        var entries = MakeStoryEntries(20);
+        var batches = ProviderBatchBuilder.Build(entries, BatchOptions.Default);
+
+        Assert.Equal(new[] { 10, 10 }, Sizes(batches));
+    }
+
+    [Fact]
+    public void StoryData_21条按减半后分三批()
+    {
+        var entries = MakeStoryEntries(21);
+        var batches = ProviderBatchBuilder.Build(entries, BatchOptions.Default);
+
+        Assert.Equal(new[] { 10, 10, 1 }, Sizes(batches));
+    }
+
+    [Fact]
+    public void StoryData_记录条目数减半日志()
+    {
+        var entries = MakeStoryEntries(20);
+        var logs = new List<string>();
+        ProviderBatchBuilder.Build(entries, BatchOptions.Default, logs.Add);
+
+        Assert.Contains(logs, l => l.Contains("剧情批次条目数减半为 10"));
+    }
+
+    [Fact]
+    public void StoryData_MaxItems为1时减半下限保底为1()
+    {
+        var options = new BatchOptions { MaxItemsPerBatch = 1 };
+        var entries = MakeStoryEntries(3);
+        var batches = ProviderBatchBuilder.Build(entries, options);
+
+        Assert.Equal(new[] { 1, 1, 1 }, Sizes(batches));
+    }
+
+    [Fact]
+    public void 非StoryData_保持原有条目数_20条一批()
+    {
+        var generalEntries = MakeEntries(20); // RelativeFilePath = "Test.json" -> General
+        var batches = ProviderBatchBuilder.Build(generalEntries, BatchOptions.Default);
+
+        Assert.Equal(new[] { 20 }, Sizes(batches));
+    }
 }

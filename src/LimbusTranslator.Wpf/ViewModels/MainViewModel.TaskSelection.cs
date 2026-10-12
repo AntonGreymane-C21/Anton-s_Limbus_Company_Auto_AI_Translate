@@ -146,6 +146,7 @@ public sealed partial class MainViewModel
             _allFileTasks.Add(new FileTaskRow
             {
                 LogicalFile = summary.LogicalFile,
+                Category = summary.Category,
                 CategoryName = summary.CategoryName,
                 SummaryText = summary.Describe(),
                 NeedTranslateCount = summary.NeedTranslateCount,
@@ -227,10 +228,48 @@ public sealed partial class MainViewModel
                 ? string.Empty
                 : $"\n（搜索「{_fileTaskSearchText.Trim()}」：仅显示匹配的 {FileTasks.Count} 个文件；全选/全不选/反选同样只作用于这些文件）");
 
+        UpdateCategorySelectedCounts();
+
         OnPropertyChanged(nameof(HasSelectedFiles));
         OnPropertyChanged(nameof(HasVisibleFileTasks));
         // 第9.0C.3轮：0 个文件被选中时「开始汉化」必须禁用（§四十）。
         OnPropertyChanged(nameof(CanTranslateAction));
+    }
+
+    /// <summary>
+    /// 第9.0C.25轮：根据当前文件选择状态，同步刷新各分类卡片上的「已选 X」计数。
+    /// 口径说明：
+    ///   - 与 NeedTranslateFileCount 一致，只统计真正需要 AI 翻译（RequiresAi == true）的文件数；
+    ///   - 若某分类未勾选（不在当前任务范围中，本轮不处理），已选数记为 0；
+    ///   - 勾选的分类已选数之和，严格等于下方状态栏「已选择 N / M 个文件」中的 N。
+    /// </summary>
+    internal void UpdateCategorySelectedCounts()
+    {
+        if (CategoryStats.Count == 0)
+        {
+            return;
+        }
+
+        if (_allFileTasks.Count == 0)
+        {
+            foreach (var stat in CategoryStats)
+            {
+                stat.SelectedFileCount = 0;
+            }
+            return;
+        }
+
+        var selectedCounts = _allFileTasks
+            .Where(row => row.RequiresAi && _fileSelection.IsSelected(row.LogicalFile))
+            .GroupBy(row => row.Category)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        foreach (var stat in CategoryStats)
+        {
+            stat.SelectedFileCount = stat.IsSelected
+                ? (selectedCounts.TryGetValue(stat.Category, out var count) ? count : 0)
+                : 0;
+        }
     }
 
     /// <summary>全选**当前范围可见**文件（不影响其它范围内的隐藏选择）。</summary>
@@ -388,6 +427,9 @@ public sealed class FileTaskRow : INotifyPropertyChanged
 
     /// <summary>逻辑文件路径（= <c>UnitKey.RelativeFilePath</c>）。</summary>
     public required string LogicalFile { get; init; }
+
+    /// <summary>分类枚举（第9.0C.25轮：用于分类即时联动统计）。</summary>
+    public required TextCategory Category { get; init; }
 
     /// <summary>分类显示名（中文）。</summary>
     public required string CategoryName { get; init; }

@@ -27,8 +27,8 @@ public sealed class TranslationUnit
     /// <summary>译文（中文）</summary>
     public string? Translation { get; set; }
 
-    /// <summary>说话人（取自 teller 字段；model 为韩文内部ID不翻译）</summary>
-    public string? Speaker { get; init; }
+    /// <summary>说话人（标准中文名或原始说话人）</summary>
+    public string? Speaker { get; set; }
 
     /// <summary>在记录中的排序</summary>
     public int Order { get; init; }

@@ -34,7 +34,7 @@ public partial class SettingsWindow : Window
     public string ApiKey { get; set; } = string.Empty;
     public string Model { get; set; } = string.Empty;
     public string Temperature { get; set; } = "0.3";
-    public string MaxTokens { get; set; } = "4096";
+    public string MaxTokens { get; set; } = "16384";
     public string TimeoutSeconds { get; set; } = "120";
     public string MaxConcurrentRequests { get; set; } = "10";
 
@@ -286,7 +286,7 @@ public partial class SettingsWindow : Window
                 },
                 ReasoningEffort = SelectedReasoningEffort == "默认" ? null : SelectedReasoningEffort,
                 Temperature = double.TryParse(Temperature, out var t) ? t : 0.3,
-                MaxTokens = int.TryParse(MaxTokens, out var mt) ? mt : 4096,
+                MaxTokens = int.TryParse(MaxTokens, out var mt) ? mt : 16384,
                 TimeoutSeconds = int.TryParse(TimeoutSeconds, out var ts) ? ts : 120,
                 MaxRetry = 5,
                 MaxConcurrentRequests = int.TryParse(MaxConcurrentRequests, out var mc) ? mc : 10,
@@ -438,7 +438,7 @@ public partial class SettingsWindow : Window
         },
         ReasoningEffort = SelectedReasoningEffort == "默认" ? null : SelectedReasoningEffort,
         Temperature = double.TryParse(Temperature, out var t) ? t : 0.3,
-        MaxTokens = int.TryParse(MaxTokens, out var mt) ? mt : 4096,
+        MaxTokens = int.TryParse(MaxTokens, out var mt) ? mt : 16384,
         TimeoutSeconds = int.TryParse(TimeoutSeconds, out var ts) ? ts : 120,
         MaxRetry = 5,
         MaxConcurrentRequests = int.TryParse(MaxConcurrentRequests, out var mc) ? mc : 10,

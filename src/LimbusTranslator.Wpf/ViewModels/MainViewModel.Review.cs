@@ -250,14 +250,19 @@ public sealed partial class MainViewModel
             return 0;
         }
 
-        var saved = SaveReviewedEntries(new[] { SelectedReviewEntry });
+        var reviewedEntry = SelectedReviewEntry;
+        var saved = SaveReviewedEntries(new[] { reviewedEntry });
+        if (saved > 0)
+        {
+            NoteSimpleReviewChanged();   // 简易模式：审核修改需要重新生成输出后再部署
+        }
 
         // 第9.0C.12c轮：写 TM（保存）与"刷新界面"必须分开——
         // 真实反馈：这里曾抛 NullReferenceException，弹窗只写"保存审核失败"，
         // 让用户以为译文没保存（其实已写入 TM）。刷新失败只记录，不影响保存结果。
         try
         {
-            RevalidateEntry(SelectedReviewEntry);
+            RevalidateEntry(reviewedEntry);
             ApplyReviewFilter();
             RefreshReviewDetailIssues();
         }
@@ -267,7 +272,7 @@ public sealed partial class MainViewModel
         }
 
         ReviewSaveStatusText = saved > 0
-            ? HardSafetyNote(SelectedReviewEntry)
+            ? HardSafetyNote(reviewedEntry)
             : "保存失败（空源文 / 空译文不会写入）";
         OnPropertyChanged(nameof(ReviewSaveStatusText));
         return saved;
@@ -301,6 +306,11 @@ public sealed partial class MainViewModel
         }
 
         var saved = SaveHumanReviewedBulk(candidates);
+        if (saved > 0)
+        {
+            NoteSimpleReviewChanged();
+        }
+
         foreach (var entry in candidates)
         {
             RevalidateEntry(entry);
@@ -437,6 +447,7 @@ public sealed partial class MainViewModel
         CompleteGuiDeploy();
         OnPropertyChanged(nameof(DeployInfoText));
         OnPropertyChanged(nameof(LastDeployOutcomeText));
+        NoteSimpleDeployResult(result.Status);
     }
 
     /// <summary>部署结果的中文摘要（第9.0C轮）。</summary>

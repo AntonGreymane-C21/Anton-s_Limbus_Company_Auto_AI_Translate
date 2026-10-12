@@ -1,0 +1,477 @@
+<!--
+    简易模式：定位游戏 → 分析 → 翻译 → 部署，一次只显示当前这一步。
+    暗色主题只在这里合并（专家模式继续使用 App.xaml 的浅色样式）。
+    所有操作都调用 MainViewModel 的既有业务方法，安全语义与专家模式一致。
+-->
+<UserControl x:Class="LimbusTranslator.Wpf.Views.SimpleModeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignWidth="1100" d:DesignHeight="800"
+             IsVisibleChanged="SimpleModeView_IsVisibleChanged">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/LimbusTranslator.Wpf;component/Themes/LimbusDarkTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Grid Background="{StaticResource LimbusBackdrop}" TextElement.FontFamily="{StaticResource LimbusFont}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ================= 顶栏 ================= -->
+        <Border Grid.Row="0" Background="{StaticResource LimbusHeader}" BorderBrush="{StaticResource LimbusDivider}"
+                BorderThickness="0,0,0,1" Padding="22,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Rectangle Width="4" Height="26" Fill="{StaticResource LimbusGold}" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                    <Border Background="{StaticResource LimbusRed}" BorderBrush="{StaticResource LimbusGoldDim}" BorderThickness="1"
+                            Padding="7,2" CornerRadius="2" VerticalAlignment="Center">
+                        <TextBlock Text="LC" Foreground="#F6EFE2" FontWeight="Bold" FontSize="13"/>
+                    </Border>
+                    <TextBlock Text="边狱巴士 · 汉化助手" Foreground="{StaticResource LimbusText}" FontSize="17" FontWeight="Bold"
+                               VerticalAlignment="Center" Margin="12,0,0,0"/>
+                    <TextBlock Text="按步骤更新游戏汉化" Foreground="{StaticResource LimbusFaint}" FontSize="12"
+                               VerticalAlignment="Center" Margin="14,2,0,0"/>
+                </StackPanel>
+                <Border Grid.Column="2" Background="#18181C" BorderBrush="{StaticResource LimbusCardBorder}" BorderThickness="1"
+                        CornerRadius="3" Padding="2" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton x:Name="SimpleModeRadio" Style="{StaticResource LimbusSegment}" GroupName="LimbusUiMode"
+                                     Content="简易" IsChecked="True" ToolTip="简易模式：按步骤操作"/>
+                        <RadioButton x:Name="ExpertModeRadio" Style="{StaticResource LimbusSegment}" GroupName="LimbusUiMode"
+                                     Content="专家" Click="SwitchToExpert_Click"
+                                     ToolTip="专家模式：原工作台（分类 / 文件勾选、批量审核、术语、部署到文件夹等全部功能）"/>
+                    </StackPanel>
+                </Border>
+                <Button Grid.Column="3" Style="{StaticResource LimbusHeaderButton}" Content="⚙ 设置" Margin="12,0,0,0"
+                        Click="OpenSettings_Click" ToolTip="翻译引擎 / API Key / 模型设置"/>
+            </Grid>
+        </Border>
+
+        <!-- ================= 步骤条 ================= -->
+        <Border Grid.Row="1" Padding="22,20,22,6">
+            <ItemsControl ItemsSource="{Binding SimpleSteps}" Focusable="False" MaxWidth="760" HorizontalAlignment="Stretch">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <UniformGrid Rows="1"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Rectangle x:Name="LeftLine" Height="2" Fill="#2A2A30" VerticalAlignment="Center"/>
+                            <Rectangle x:Name="RightLine" Grid.Column="2" Height="2" Fill="#2A2A30" VerticalAlignment="Center"/>
+                            <Border x:Name="Dot" Grid.Column="1" Width="32" Height="32" CornerRadius="16" BorderThickness="2"
+                                    BorderBrush="#3A3A42" Background="#151518" Margin="6,0">
+                                <TextBlock x:Name="GlyphText" Text="{Binding Glyph}" Foreground="{StaticResource LimbusFaint}"
+                                           FontFamily="Bahnschrift, Microsoft YaHei UI" FontWeight="Bold" FontSize="14"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock x:Name="TitleText" Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding Title}"
+                                       Foreground="{StaticResource LimbusFaint}" FontSize="13"
+                                       HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                        </Grid>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsFirst}" Value="True">
+                                <Setter TargetName="LeftLine" Property="Visibility" Value="Hidden"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsLast}" Value="True">
+                                <Setter TargetName="RightLine" Property="Visibility" Value="Hidden"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding State}" Value="Active">
+                                <Setter TargetName="Dot" Property="Background" Value="{StaticResource LimbusGold}"/>
+                                <Setter TargetName="Dot" Property="BorderBrush" Value="{StaticResource LimbusGold}"/>
+                                <Setter TargetName="GlyphText" Property="Foreground" Value="#1A1408"/>
+                                <Setter TargetName="TitleText" Property="Foreground" Value="{StaticResource LimbusGold}"/>
+                                <Setter TargetName="TitleText" Property="FontWeight" Value="Bold"/>
+                                <Setter TargetName="LeftLine" Property="Fill" Value="{StaticResource LimbusGoldDim}"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding State}" Value="Done">
+                                <Setter TargetName="Dot" Property="Background" Value="{StaticResource LimbusGoldSoft}"/>
+                                <Setter TargetName="Dot" Property="BorderBrush" Value="{StaticResource LimbusGoldDim}"/>
+                                <Setter TargetName="GlyphText" Property="Foreground" Value="{StaticResource LimbusGold}"/>
+                                <Setter TargetName="TitleText" Property="Foreground" Value="{StaticResource LimbusMuted}"/>
+                                <Setter TargetName="LeftLine" Property="Fill" Value="{StaticResource LimbusGoldDim}"/>
+                                <Setter TargetName="RightLine" Property="Fill" Value="{StaticResource LimbusGoldDim}"/>
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Border>
+
+        <!-- ================= 当前步骤 ================= -->
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                      PanningMode="VerticalOnly" Focusable="False">
+            <StackPanel MaxWidth="860" Margin="22,14,22,22">
+
+                <!-- 上次操作需要注意的结果 -->
+                <Border Style="{StaticResource LimbusNotice}" Tag="{Binding SimpleLastRunNoteTone}"
+                        Visibility="{Binding SimpleLastRunNoteVisibility}" Margin="0,0,0,12">
+                    <TextBlock Text="{Binding SimpleLastRunNote}" TextWrapping="Wrap" FontSize="13"/>
+                </Border>
+
+                <!-- ① 定位游戏 -->
+                <Border Style="{StaticResource LimbusCardPanel}" Visibility="{Binding SimpleLocateVisibility}">
+                    <DockPanel>
+                        <Rectangle DockPanel.Dock="Top" Height="2" Fill="{StaticResource LimbusGoldRule}"/>
+                        <StackPanel Margin="30,24,30,28">
+                            <TextBlock Style="{StaticResource LimbusEyebrow}" Text="STEP 01 · 定位游戏"/>
+                            <TextBlock Style="{StaticResource LimbusHeading}" Text="先找到你的《边狱巴士》" Margin="0,8,0,0"/>
+                            <TextBlock Style="{StaticResource LimbusBody}" Margin="0,8,0,0"
+                                       Text="工具需要读取游戏自带的英文文本和你已经安装的中文汉化（LLC_zh-CN），只更新有变化的部分。点「自动查找」会在 Steam 库中搜索；找不到时可以手动选择游戏安装目录。"/>
+                            <Border Background="{StaticResource LimbusInput}" BorderBrush="{StaticResource LimbusCardBorder}" BorderThickness="1"
+                                    CornerRadius="3" Padding="12,9" Margin="0,18,0,0">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource LimbusLabel}" Text="游戏目录"/>
+                                    <TextBlock Text="{Binding SimpleGameRootText}" Foreground="{StaticResource LimbusText}" FontSize="13"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+                            <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
+                                <Button Style="{StaticResource LimbusPrimaryButton}" Content="自动查找" Click="LocateGame_Click"/>
+                                <Button Content="手动选择文件夹…" Margin="12,0,0,0" Click="BrowseGame_Click"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- ② 分析 -->
+                <Border Style="{StaticResource LimbusCardPanel}" Visibility="{Binding SimpleAnalyzeVisibility}">
+                    <DockPanel>
+                        <Rectangle DockPanel.Dock="Top" Height="2" Fill="{StaticResource LimbusGoldRule}"/>
+                        <StackPanel Margin="30,24,30,28">
+                            <TextBlock Style="{StaticResource LimbusEyebrow}" Text="STEP 02 · 分析"/>
+                            <TextBlock Style="{StaticResource LimbusHeading}" Text="检查游戏更新了哪些文本" Margin="0,8,0,0"/>
+                            <TextBlock Style="{StaticResource LimbusBody}" Margin="0,8,0,0"
+                                       Text="对比游戏当前的英文文本和已有汉化，找出新增或改动、需要翻译的内容。只读取文件，不会修改游戏。"/>
+                            <Border Background="{StaticResource LimbusInput}" BorderBrush="{StaticResource LimbusCardBorder}" BorderThickness="1"
+                                    CornerRadius="3" Padding="12,9" Margin="0,18,0,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource LimbusLabel}" Text="游戏目录"/>
+                                        <TextBlock Text="{Binding SimpleGameRootText}" Foreground="{StaticResource LimbusText}" FontSize="13"
+                                                   TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Style="{StaticResource LimbusLinkButton}" Content="更换"
+                                            VerticalAlignment="Center" Margin="12,0,0,0" Click="BrowseGame_Click"/>
+                                </Grid>
+                            </Border>
+                            <Button Style="{StaticResource LimbusPrimaryButton}" Content="开始分析" HorizontalAlignment="Left"
+                                    Margin="0,20,0,0" Click="Analyze_Click"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- ③ 翻译 -->
+                <Border Style="{StaticResource LimbusCardPanel}" Visibility="{Binding SimpleTranslateVisibility}">
+                    <DockPanel>
+                        <Rectangle DockPanel.Dock="Top" Height="2" Fill="{StaticResource LimbusGoldRule}"/>
+                        <StackPanel Margin="30,24,30,28">
+                            <TextBlock Style="{StaticResource LimbusEyebrow}" Text="STEP 03 · 翻译"/>
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Foreground="{StaticResource LimbusMuted}" FontSize="14" Text="需要翻译"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                        <TextBlock Style="{StaticResource LimbusBigNumber}" Text="{Binding SimpleNeedTranslateText}"/>
+                                        <TextBlock Foreground="{StaticResource LimbusMuted}" FontSize="16" Text="条"
+                                                   VerticalAlignment="Bottom" Margin="8,0,0,10"/>
+                                    </StackPanel>
+                                </StackPanel>
+                                <Button Grid.Column="1" Style="{StaticResource LimbusPrimaryButton}" Content="开始翻译"
+                                        VerticalAlignment="Center" IsEnabled="{Binding SimpleCanTranslate}" Click="Translate_Click"/>
+                            </Grid>
+                            <TextBlock Style="{StaticResource LimbusBody}" Margin="0,6,0,0"
+                                       Text="AI 会翻译全部新增和改动的文本，并自动检查占位符、标签与术语。翻译完成后，只有 AI 不确定的条目需要你看一眼。"/>
+                            <Border Style="{StaticResource LimbusNotice}" Tag="{Binding SimpleEngineTone}" Margin="0,16,0,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding SimpleEngineText}" TextWrapping="Wrap" FontSize="13" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Content="打开设置" Margin="12,0,0,0" Padding="12,4" MinHeight="28"
+                                            Visibility="{Binding SimpleEngineErrorVisibility}" Click="OpenSettings_Click"/>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource LimbusNotice}" Visibility="{Binding SimpleRetranslateVisibility}" Margin="0,10,0,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding SimpleFailedEntriesText}" TextWrapping="Wrap" FontSize="13" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Content="重试失败的条目" Margin="12,0,0,0" Padding="12,4" MinHeight="28"
+                                            Click="RetranslateFailed_Click"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- ③ 已是最新 -->
+                <Border Style="{StaticResource LimbusCardPanel}" Visibility="{Binding SimpleUpToDateVisibility}">
+                    <DockPanel>
+                        <Rectangle DockPanel.Dock="Top" Height="2" Fill="{StaticResource LimbusGoldRule}"/>
+                        <StackPanel Margin="30,24,30,28">
+                            <TextBlock Style="{StaticResource LimbusEyebrow}" Text="已是最新"/>
+                            <TextBlock Style="{StaticResource LimbusHeading}" Text="没有需要翻译的新文本 ✓" Margin="0,8,0,0"/>
+                            <TextBlock Style="{StaticResource LimbusBody}" Margin="0,8,0,0"
+                                       Text="游戏文本与你的汉化一致，无需更新。游戏更新后回来点「重新检查」即可。"/>
+                            <Button Content="重新检查" HorizontalAlignment="Left" Margin="0,20,0,0" Click="Analyze_Click"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- ③ 审核（简化卡片：原文 + 可编辑译文 + 一句话问题） -->
+                <Border Style="{StaticResource LimbusCardPanel}" Visibility="{Binding SimpleReviewVisibility}">
+                    <DockPanel>
+                        <Rectangle DockPanel.Dock="Top" Height="2" Fill="{StaticResource LimbusGoldRule}"/>
+                        <StackPanel Margin="30,24,30,26">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource LimbusEyebrow}" Text="STEP 03 · 确认译文"/>
+                                    <TextBlock Style="{StaticResource LimbusHeading}" Margin="0,8,0,0">
+                                        <Run Text="还有 "/><Run Text="{Binding SimpleReviewRemainingText, Mode=OneWay}" Foreground="{StaticResource LimbusGold}"/><Run Text=" 条需要你看一眼"/>
+                                    </TextBlock>
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="{Binding SimpleReviewedCountText}" Foreground="{StaticResource LimbusMuted}"
+                                           FontSize="12" VerticalAlignment="Bottom" Margin="12,0,0,4"/>
+                            </Grid>
+
+                            <StackPanel Visibility="{Binding SimpleReviewEditorVisibility}" Margin="0,18,0,0">
+                                <!-- 原文 -->
+                                <Border Background="{StaticResource LimbusInput}" BorderBrush="{StaticResource LimbusCardBorder}" BorderThickness="1"
+                                        CornerRadius="3" Padding="14,10">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Style="{StaticResource LimbusLabel}" Text="{Binding SimpleReviewSourceLabel}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding SimpleReviewSpeakerText}" Foreground="{StaticResource LimbusMuted}"
+                                                       FontSize="11" Visibility="{Binding SimpleReviewSpeakerVisibility}"/>
+                                        </Grid>
+                                        <TextBox Style="{StaticResource LimbusReadOnlyText}" Text="{Binding SimpleReviewSourceText, Mode=OneWay}"
+                                                 Foreground="{StaticResource LimbusMuted}" MaxHeight="180"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 一句话问题 -->
+                                <Border Style="{StaticResource LimbusNotice}" Tag="{Binding SimpleReviewIssueTone}" Margin="0,12,0,0">
+                                    <TextBlock Text="{Binding SimpleReviewIssueText}" TextWrapping="Wrap" FontSize="13"/>
+                                </Border>
+
+                                <!-- 译文（可编辑） -->
+                                <TextBlock Style="{StaticResource LimbusLabel}" Text="译文（可直接修改）" Margin="0,16,0,6"/>
+                                <TextBox x:Name="SimpleTranslationBox"
+                                         Text="{Binding SimpleReviewTranslation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AcceptsReturn="True" TextWrapping="Wrap" MinHeight="110" MaxHeight="260" FontSize="15"/>
+
+                                <Border Style="{StaticResource LimbusNotice}" Tag="{Binding SimpleReviewNoteTone}"
+                                        Visibility="{Binding SimpleReviewNoteVisibility}" Margin="0,10,0,0">
+                                    <TextBlock Text="{Binding SimpleReviewNote}" TextWrapping="Wrap" FontSize="13"/>
+                                </Border>
+
+                                <Grid Margin="0,18,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <Button Style="{StaticResource LimbusLinkButton}" Content="稍后再审，先去部署" HorizontalAlignment="Left"
+                                                Click="SkipReview_Click"
+                                                ToolTip="未确认的条目会在部署前的发布检查中提示，回来还能继续审核"/>
+                                        <TextBlock Text="快捷键：Ctrl+S 保存 · Ctrl+Enter 通过并下一条" Foreground="{StaticResource LimbusFaint}"
+                                                   FontSize="11" Margin="2,4,0,0"/>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="保存" MinWidth="88" Click="SimpleSave_Click"
+                                            ToolTip="保存修改（Ctrl+S），停留在本条"/>
+                                    <Button Grid.Column="2" Style="{StaticResource LimbusPrimaryButton}" Content="通过并下一条"
+                                            Margin="12,0,0,0" Click="SimpleApproveNext_Click"
+                                            ToolTip="保存并确认这条译文，跳到下一条（Ctrl+Enter）"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <!-- 没有待确认条目 -->
+                            <StackPanel Visibility="{Binding SimpleReviewEmptyVisibility}" Margin="0,18,0,0">
+                                <TextBlock Style="{StaticResource LimbusBody}" Text="所有需要确认的译文都处理完了。"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- ③ 应用审核修改 -->
+                <Border Style="{StaticResource LimbusCardPanel}" Visibility="{Binding SimpleApplyReviewVisibility}">
+                    <DockPanel>
+                        <Rectangle DockPanel.Dock="Top" Height="2" Fill="{StaticResource LimbusGoldRule}"/>
+                        <StackPanel Margin="30,24,30,28">
+                            <TextBlock Style="{StaticResource LimbusEyebrow}" Text="STEP 03 · 应用修改"/>
+                            <TextBlock Style="{StaticResource LimbusHeading}" Text="把你的修改写进汉化文件" Margin="0,8,0,0"/>
+                            <TextBlock Style="{StaticResource LimbusBody}" Margin="0,8,0,0"
+                                       Text="你保存过的译文修改需要重新生成一次汉化文件，部署时才会生效。生成后会重新核验全部文件。"/>
+                            <Button Style="{StaticResource LimbusPrimaryButton}" Content="应用修改" HorizontalAlignment="Left"
+                                    Margin="0,20,0,0" Click="ApplyReview_Click"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- ④ 部署 -->
+                <Border Style="{StaticResource LimbusCardPanel}" Visibility="{Binding SimpleDeployVisibility}">
+                    <DockPanel>
+                        <Rectangle DockPanel.Dock="Top" Height="2" Fill="{StaticResource LimbusGoldRule}"/>
+                        <StackPanel Margin="30,24,30,28">
+                            <TextBlock Style="{StaticResource LimbusEyebrow}" Text="STEP 04 · 部署"/>
+                            <TextBlock Style="{StaticResource LimbusHeading}" Text="把汉化装进游戏" Margin="0,8,0,0"/>
+                            <TextBlock Style="{StaticResource LimbusBody}" Text="{Binding SimpleOutputSummaryText}" Margin="0,8,0,0"/>
+
+                            <Border Style="{StaticResource LimbusNotice}" Visibility="{Binding SimpleSkippedReviewVisibility}" Margin="0,14,0,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding SimpleSkippedReviewText}" TextWrapping="Wrap" FontSize="13" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Content="回去审核" Margin="12,0,0,0" Padding="12,4" MinHeight="28"
+                                            Click="ResumeReview_Click"/>
+                                </Grid>
+                            </Border>
+
+                            <Border Style="{StaticResource LimbusNotice}" Tag="{Binding SimpleGateTone}" Margin="0,14,0,0">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding SimpleGateTitle}" FontWeight="Bold" FontSize="14"/>
+                                        <Button Grid.Column="1" Style="{StaticResource LimbusLinkButton}" Content="查看详细原因"
+                                                Click="ShowGateReasons_Click"/>
+                                    </Grid>
+                                    <TextBlock Text="{Binding SimpleGateDetail}" TextWrapping="Wrap" FontSize="13" Margin="0,6,0,0" Opacity="0.9"/>
+                                    <CheckBox Content="我已了解上述提示，仍要部署" Margin="0,10,0,0"
+                                              IsChecked="{Binding GateConfirmationAcknowledged, Mode=TwoWay}"
+                                              Visibility="{Binding SimpleGateConfirmVisibility}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="{Binding SimpleDeployTargetText}" Foreground="{StaticResource LimbusFaint}" FontSize="12"
+                                       TextWrapping="Wrap" Margin="0,14,0,0"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+                                <Button Style="{StaticResource LimbusPrimaryButton}" Content="部署到游戏"
+                                        IsEnabled="{Binding SimpleCanDeploy}" Click="Deploy_Click"
+                                        ToolTip="部署前自动备份游戏里原来的汉化文件；失败会自动回滚"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- 完成 -->
+                <Border Style="{StaticResource LimbusCardPanel}" Visibility="{Binding SimpleDoneVisibility}">
+                    <DockPanel>
+                        <Rectangle DockPanel.Dock="Top" Height="2" Fill="{StaticResource LimbusGoldRule}"/>
+                        <StackPanel Margin="30,24,30,28">
+                            <TextBlock Style="{StaticResource LimbusEyebrow}" Text="完成"/>
+                            <TextBlock Style="{StaticResource LimbusHeading}" Text="汉化已更新 ✓" Margin="0,8,0,0"/>
+                            <TextBlock Style="{StaticResource LimbusBody}" Text="{Binding SimpleDoneText}" Margin="0,8,0,0"/>
+                            <TextBlock Style="{StaticResource LimbusBody}" Margin="0,6,0,0"
+                                       Text="现在可以启动游戏查看效果。游戏下次更新后，回来点「检查新的更新」即可。"/>
+                            <Button Content="检查新的更新" HorizontalAlignment="Left" Margin="0,20,0,0" Click="Analyze_Click"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- 执行中 -->
+                <Border Style="{StaticResource LimbusCardPanel}" Visibility="{Binding SimpleBusyVisibility}">
+                    <DockPanel>
+                        <Rectangle DockPanel.Dock="Top" Height="2" Fill="{StaticResource LimbusGoldRule}"/>
+                        <StackPanel Margin="30,24,30,28">
+                            <TextBlock Style="{StaticResource LimbusEyebrow}" Text="正在处理"/>
+                            <TextBlock Style="{StaticResource LimbusHeading}" Text="{Binding ProgressOperation}" Margin="0,8,0,0"/>
+                            <ProgressBar Value="{Binding ProgressValue, Mode=OneWay}" Minimum="0" Maximum="100"
+                                         IsIndeterminate="{Binding IsProgressIndeterminate, Mode=OneWay}" Margin="0,18,0,0"/>
+                            <TextBlock Text="{Binding ProgressText}" Foreground="{StaticResource LimbusMuted}" FontSize="12"
+                                       TextWrapping="Wrap" Margin="0,8,0,0"/>
+                            <TextBlock Text="{Binding SimpleCancellingHint}" Foreground="{StaticResource LimbusWarn}" FontSize="12"
+                                       TextWrapping="Wrap" Margin="0,4,0,0"/>
+                            <Button Content="{Binding SimpleCancelText}" HorizontalAlignment="Left" Margin="0,16,0,0" MinWidth="88"
+                                    Visibility="{Binding SimpleCancelVisibility}" IsEnabled="{Binding SimpleCanCancel}"
+                                    Click="Cancel_Click"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- 运行日志（默认折叠） -->
+                <Expander Header="运行日志" Margin="0,18,0,0">
+                    <Border Style="{StaticResource LimbusCardPanel}" Padding="12,10">
+                        <StackPanel>
+                            <CheckBox Content="显示调试信息" FontSize="12" Foreground="{StaticResource LimbusMuted}"
+                                      IsChecked="{Binding ShowDebugLogs, Mode=TwoWay}" Margin="0,0,0,8"/>
+                            <TextBox x:Name="SimpleLogBox" Style="{StaticResource LimbusReadOnlyText}"
+                                     Text="{Binding DisplayLogText, Mode=OneWay}" TextWrapping="NoWrap"
+                                     FontFamily="Consolas, Microsoft YaHei UI" FontSize="12"
+                                     Foreground="{StaticResource LimbusMuted}" Height="220"
+                                     TextChanged="SimpleLogBox_TextChanged"/>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ================= 页脚 ================= -->
+        <Border Grid.Row="3" Background="{StaticResource LimbusHeader}" BorderBrush="{StaticResource LimbusDivider}"
+                BorderThickness="0,1,0,0" Padding="22,7">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="7" Height="7" Fill="{StaticResource LimbusGold}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding SimpleEngineShortText}" Foreground="{StaticResource LimbusMuted}" FontSize="12"
+                               Margin="8,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{StaticResource LimbusFaint}" FontSize="12"
+                           HorizontalAlignment="Right" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="16,0,0,0"/>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

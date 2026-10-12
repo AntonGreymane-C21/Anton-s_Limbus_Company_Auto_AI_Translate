@@ -29,7 +29,8 @@
   },
   "Bleed": {
     "translation": "流血",
-    "locked": true
+    "locked": true,
+    "meaning": "状态效果名"
   },
   "Bloodfiend": {
     "translation": "血魔",
@@ -45,7 +46,8 @@
   },
   "Burn": {
     "translation": "烧伤",
-    "locked": true
+    "locked": true,
+    "meaning": "状态效果名"
   },
   "Casualwear Hall": {
     "translation": "休闲装大厅",
@@ -53,7 +55,8 @@
   },
   "Charge": {
     "translation": "充能",
-    "locked": true
+    "locked": true,
+    "meaning": "状态效果名"
   },
   "Clash": {
     "translation": "拼点",
@@ -229,7 +232,8 @@
   },
   "Manager": {
     "translation": "管理人",
-    "locked": true
+    "locked": true,
+    "meaning": "但丁的称号"
   },
   "Mannequin": {
     "translation": "人偶",
@@ -301,7 +305,8 @@
   },
   "Poise": {
     "translation": "呼吸法",
-    "locked": true
+    "locked": true,
+    "meaning": "状态效果名"
   },
   "Power Down": {
     "translation": "威力降低",
@@ -341,7 +346,8 @@
   },
   "Rupture": {
     "translation": "破裂",
-    "locked": true
+    "locked": true,
+    "meaning": "状态效果名"
   },
   "Ryoshu": {
     "translation": "良秀",
@@ -377,7 +383,8 @@
   },
   "Sinking": {
     "translation": "沉沦",
-    "locked": true
+    "locked": true,
+    "meaning": "状态效果名"
   },
   "Sinner": {
     "translation": "罪人",
@@ -437,7 +444,8 @@
   },
   "Tremor": {
     "translation": "震颤",
-    "locked": true
+    "locked": true,
+    "meaning": "状态效果名"
   },
   "Two-legs": {
     "translation": "两足者",
@@ -449,7 +457,8 @@
   },
   "Voice": {
     "translation": "声音",
-    "locked": true
+    "locked": true,
+    "meaning": "神秘声音"
   },
   "Walpurgisnacht": {
     "translation": "瓦尔普吉斯之夜",

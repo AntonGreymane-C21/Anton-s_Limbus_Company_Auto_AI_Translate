@@ -204,7 +204,7 @@ public static class ProductionTranslationPlanBuilder
                     // 旧中文：优先英文输出结构（同 Key），否则按 UnitKey 直接取旧中文（KR-only Key 也能继承）
                     OldTranslation = reference?.OldTranslation
                         ?? (oldChineseLookup.TryGetValue(key, out var oldChinese) ? oldChinese : null),
-                    Speaker = reference?.Speaker,
+                    Speaker = reference?.Speaker ?? canonical.Speaker,
                     Order = reference?.Order ?? index,
                     // 占位动作：ApplyToEntries 会用 Canonical 计划覆盖（它覆盖全部韩文 Key）
                     Action = TranslationAction.Inherit,
@@ -355,6 +355,7 @@ public static class ProductionTranslationPlanBuilder
                         Source = hit.Key,
                         Target = hit.Value.Translation ?? string.Empty,
                         Locked = hit.Value.Locked,
+                        Meaning = hit.Value.Meaning,
                     })
                     .ToList();
 

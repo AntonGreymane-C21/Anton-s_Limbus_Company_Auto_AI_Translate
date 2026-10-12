@@ -3,13 +3,20 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:views="clr-namespace:LimbusTranslator.Wpf.Views"
         mc:Ignorable="d"
         Title="边狱巴士 · 自动增量汉化"
         Height="1000" Width="1320" MinHeight="720" MinWidth="1080"
         PreviewKeyDown="MainWindow_PreviewKeyDown"
         Closing="MainWindow_Closing"
         WindowStartupLocation="CenterScreen">
-    <ScrollViewer VerticalScrollBarVisibility="Auto"
+    <Grid>
+    <!-- 简易模式（暗色主题，按步骤操作） -->
+    <views:SimpleModeView Visibility="{Binding SimpleModeVisibility}"/>
+
+    <!-- 专家模式（原工作台，外观与功能保持不变） -->
+    <ScrollViewer Visibility="{Binding ExpertModeVisibility}"
+                  VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled"
                   CanContentScroll="False"
                   PanningMode="VerticalOnly">
@@ -30,6 +37,7 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <Border Width="48" Height="48" CornerRadius="12" Background="#A6425D" VerticalAlignment="Center">
                     <TextBlock Text="LC" Foreground="White" FontWeight="Bold" FontSize="18"
@@ -46,6 +54,10 @@
                         <TextBlock Text="{Binding StatusText}" Foreground="#F7FAFF" FontWeight="SemiBold" Margin="0,2,0,0"/>
                     </StackPanel>
                 </Border>
+                <Button Grid.Column="3" Content="切换到简易模式" Margin="12,0,0,0" Padding="12,6" VerticalAlignment="Center"
+                        Background="#263650" Foreground="#DDEBFF" BorderBrush="#3A4C69"
+                        Click="SwitchToSimpleMode_Click"
+                        ToolTip="简易模式：定位游戏 → 分析 → 翻译 → 部署，一次只显示当前这一步"/>
             </Grid>
         </Border>
 
@@ -336,7 +348,10 @@
                                                 <StackPanel Orientation="Horizontal">
                                                     <CheckBox IsChecked="{Binding IsSelected}" VerticalAlignment="Center"/>
                                                     <TextBlock Text="{Binding DisplayName}" Foreground="#31415C" FontWeight="SemiBold" Margin="6,0,0,0"/>
-                                                    <TextBlock Text="需译 " Foreground="#718096" FontSize="11" Margin="10,1,0,0"/>
+                                                    <!-- 第9.0C.25轮：显示本轮分类已选文件数，与下方文件勾选即时联动 -->
+                                                    <TextBlock Text="已选 " Foreground="#2E6BDE" FontSize="11" Margin="10,1,0,0"/>
+                                                    <TextBlock Text="{Binding SelectedFileCount}" Foreground="#2E6BDE" FontWeight="Bold" FontSize="11"/>
+                                                    <TextBlock Text=" / 需译 " Foreground="#718096" FontSize="11"/>
                                                     <TextBlock Text="{Binding NeedTranslateFileCount}" Foreground="#A6425D" FontWeight="Bold" FontSize="11"/>
                                                     <TextBlock Text=" / 总 " Foreground="#718096" FontSize="11"/>
                                                     <TextBlock Text="{Binding TotalFileCount}" Foreground="#53637B" FontWeight="Bold" FontSize="11"/>
@@ -800,4 +815,5 @@
         </Border>
     </Grid>
     </ScrollViewer>
+    </Grid>
 </Window>

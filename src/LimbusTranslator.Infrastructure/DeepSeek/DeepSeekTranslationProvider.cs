@@ -532,7 +532,10 @@ public sealed class DeepSeekTranslationProvider : ITranslationProvider, IThinkin
         }
 
         var unitKey = entry.Key.ToString();
-        var lockedTermsText = string.Join("\n", terms.Select(t => $"{t.Source} → {t.Target}"));
+        var lockedTermsText = string.Join("\n", terms.Select(t =>
+            string.IsNullOrWhiteSpace(t.Meaning)
+                ? $"{t.Source} → {t.Target}"
+                : $"{t.Source} → {t.Target}（含义：{t.Meaning}）"));
         var protectedSource = _protector.Protect(entry.NewSourceText!);
         var protectedCurrent = _protector.Protect(currentTranslation);
 

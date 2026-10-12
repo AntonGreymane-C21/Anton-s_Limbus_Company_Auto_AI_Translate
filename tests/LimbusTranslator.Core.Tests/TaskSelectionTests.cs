@@ -239,6 +239,8 @@ public sealed class TaskSelectionTests
 
         var result = TaskSelection.Resolve(plan, Scope(), Selection());
         Assert.Single(result.SelectedEntries);
+        Assert.Single(result.SelectedReviewEntries);                  // 第9.0C.26轮：无需 AI 的文件不进待审核
+        Assert.Equal("Items/C.json", result.SelectedReviewEntries.Single().Key.RelativeFilePath);
         Assert.Equal(2, result.SelectedOutputEntries.Count);          // 无需 AI 的文件仍进输出语义
         Assert.Equal(1, result.TotalFileCount);                       // 统计只算需要 AI 的文件
     }
@@ -271,6 +273,88 @@ public sealed class TaskSelectionTests
         // ③ 统计 / 按钮可用性必须读权威状态，不能读 WPF 会写入的行属性
         Assert.Contains("_fileSelection.IsSelected(row.LogicalFile)", viewModel);
         Assert.DoesNotContain("FileTasks.Where(row => row.IsSelected)", viewModel);
+    }
+
+    [Fact]
+    public void 分类卡片显示已选数量且与文件选择联动()
+    {
+        var root = FindRepositoryRoot();
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "LimbusTranslator.Wpf", "MainWindow.xaml"));
+        var taskSelectionVm = File.ReadAllText(Path.Combine(
+            root, "src", "LimbusTranslator.Wpf", "ViewModels", "MainViewModel.TaskSelection.cs"));
+        var categoryStatCode = File.ReadAllText(Path.Combine(
+            root, "src", "LimbusTranslator.Wpf", "ViewModels", "CategoryStat.cs"));
+
+        // ① XAML 必须绑定 SelectedFileCount，且呈现三段式（已选 / 需译 / 总）
+        Assert.Contains("Text=\"{Binding SelectedFileCount}\"", xaml);
+        Assert.Contains("Text=\"已选 \"", xaml);
+        Assert.Contains("Text=\" / 需译 \"", xaml);
+        Assert.Contains("Text=\" / 总 \"", xaml);
+
+        // ② CategoryStat 包含 SelectedFileCount 属性与通知
+        Assert.Contains("public int SelectedFileCount", categoryStatCode);
+        Assert.Contains("_selectedFileCount = value;", categoryStatCode);
+        Assert.Contains("OnPropertyChanged();", categoryStatCode);
+
+        // ③ FileTaskRow 包含 Category 强类型属性
+        Assert.Contains("public required TextCategory Category", taskSelectionVm);
+
+        // ④ ViewModel 包含 UpdateCategorySelectedCounts 联动计算
+        Assert.Contains("UpdateCategorySelectedCounts()", taskSelectionVm);
+        Assert.Contains("stat.SelectedFileCount =", taskSelectionVm);
+    }
+
+    [Fact]
+    public void 待审核条目严格排除未勾选与纯继承文件且主视图模型使用权威集合()
+    {
+        // 构造场景：
+        //   - StoryData/Selected.json：需要 AI，且被用户选中（条目 1：新译；条目 2：继承）
+        //   - StoryData/Unselected.json：需要 AI，但用户未勾选（条目 3：新译）
+        //   - StoryData/NoAiInherit.json：纯继承无需 AI，默认未在列表显示（条目 4：旧文缺少等历史标记）
+        var e1 = Entry("StoryData/Selected.json", "k1", TranslationAction.TranslateNew);
+        var e2 = Entry("StoryData/Selected.json", "k2", TranslationAction.Inherit);
+        var e3 = Entry("StoryData/Unselected.json", "k3", TranslationAction.TranslateNew);
+        var e4 = Entry("StoryData/NoAiInherit.json", "k4", TranslationAction.Inherit);
+        e4.NeedsReview = true;
+        e4.ReviewReason = "CANONICAL_KOREAN_SOURCE_MISSING";
+
+        var allEntries = new List<DiffEntry> { e1, e2, e3, e4 };
+        var plan = new ProductionTranslationPlan
+        {
+            Mode = TranslationMode.KoreanEnglish,
+            Candidates = allEntries,
+            NeedTranslate = new List<DiffEntry> { e1, e3 },
+            OutputEntries = allEntries,
+            ExpectedOutputKeys = allEntries.Select(e => e.Key.ToString()).ToList(),
+            AuthoritativeLanguage = SourceLanguage.Korean,
+            AuthoritativeDirectory = "kr",
+            IsKoreanAuthoritative = true,
+            PatchedCount = 0,
+            InheritedKeptCount = 0,
+            KoreanOnlyCount = 0,
+            HasCanonicalCapture = true,
+        };
+
+        var selection = new FileSelectionState();
+        selection.Set("StoryData/Unselected.json", false);
+
+        var result = TaskSelection.Resolve(plan, new HashSet<TextCategory> { TextCategory.StoryData }, selection);
+
+        // 1. 待翻译集合只有 e1（NeedTranslate ∩ Selected）
+        Assert.Single(result.SelectedEntries);
+        Assert.Equal("StoryData/Selected.json", result.SelectedEntries.Single().Key.RelativeFilePath);
+
+        // 2. 待审核集合包含 Selected.json 的全部条目（e1 和 e2），但绝对不含 Unselected 和 NoAiInherit
+        Assert.Equal(2, result.SelectedReviewEntries.Count);
+        Assert.All(result.SelectedReviewEntries, entry => Assert.Equal("StoryData/Selected.json", entry.Key.RelativeFilePath));
+        Assert.DoesNotContain(result.SelectedReviewEntries, entry => entry.Key.RelativeFilePath == "StoryData/NoAiInherit.json");
+        Assert.DoesNotContain(result.SelectedReviewEntries, entry => entry.Key.RelativeFilePath == "StoryData/Unselected.json");
+
+        // 3. 源码守卫：MainViewModel.cs 填充待审核时必须使用 SelectedReviewEntries，不能直接塞包含无需 AI 文件的 selectedEntries
+        var root = FindRepositoryRoot();
+        var mainVmSource = File.ReadAllText(Path.Combine(root, "src", "LimbusTranslator.Wpf", "ViewModels", "MainViewModel.cs"));
+        Assert.Contains("taskSelection.SelectedReviewEntries", mainVmSource);
+        Assert.Contains("SetReviewSource(reviewEntries)", mainVmSource);
     }
 
     private static string FindRepositoryRoot()
@@ -434,7 +518,10 @@ public sealed class TaskSelectionCountingTests
 
         // ① 与 GUI「需要处理的文件」同口径：只有 1 个需要 AI 的文件被选中（不是 6 个）
         Assert.Equal(new[] { "StoryData/Big1.json" }, result.SelectedFiles);
-        // ② 输出将写出：Big1 + 5 个无需 AI 的文件（Big2 未选 ⇒ 不写出）
+        // ② 待审核列表：严格只包含选中的需 AI 文件（只有 Big1 的 1 条，5 个无需 AI 的继承文件绝不进待审核）
+        Assert.Single(result.SelectedReviewEntries);
+        Assert.Equal("StoryData/Big1.json", result.SelectedReviewEntries.Single().Key.RelativeFilePath);
+        // ③ 输出将写出：Big1 + 5 个无需 AI 的文件（Big2 未选 ⇒ 不写出）
         Assert.Equal(6, result.SelectedOutputFileCount);
         Assert.Single(result.SelectedEntries);
         Assert.Equal(2, result.TotalFileCount);
@@ -443,4 +530,5 @@ public sealed class TaskSelectionCountingTests
         Assert.Contains("输出将写出 6 个文件", result.Describe());
     }
 }
+
 

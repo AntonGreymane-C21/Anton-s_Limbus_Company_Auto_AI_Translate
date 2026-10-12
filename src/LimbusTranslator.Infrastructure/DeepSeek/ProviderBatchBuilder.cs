@@ -39,6 +39,15 @@ public static class ProviderBatchBuilder
             ? options.MaxCharactersPerBatch
             : BatchOptions.DefaultMaxCharactersPerBatch;
 
+        var isStory = entries.Count > 0 && (
+            TextCategoryHelper.FromRelativePath(entries[0].Key.RelativeFilePath) == TextCategory.StoryData
+            || entries.Any(e => TextCategoryHelper.FromRelativePath(e.Key.RelativeFilePath) == TextCategory.StoryData));
+        var effectiveMaxItems = isStory ? Math.Max(1, maxItems / 2) : maxItems;
+        if (isStory)
+        {
+            log?.Invoke($"[调试] 剧情批次条目数减半为 {effectiveMaxItems}");
+        }
+
         var batches = new List<IReadOnlyList<DiffEntry>>();
         var current = new List<DiffEntry>();
         var currentCharacters = 0;
@@ -48,7 +57,7 @@ public static class ProviderBatchBuilder
             var length = BatchOptions.MeasureItemCharacters(entry);
 
             // 超过条目阈值或字符预算时切分（current.Count > 0 保证单条超长不会产生空批）
-            if (current.Count >= maxItems
+            if (current.Count >= effectiveMaxItems
                 || (current.Count > 0 && currentCharacters + length > maxCharacters))
             {
                 batches.Add(current);

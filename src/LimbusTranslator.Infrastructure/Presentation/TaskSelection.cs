@@ -117,6 +117,12 @@ public sealed record TaskSelectionResult(
     IReadOnlyList<DiffEntry> SelectedEntries,
     IReadOnlyList<DiffEntry> SelectedOutputEntries,
     /// <summary>
+    /// 供待审核列表（Review Tab）消费的条目集合（第9.0C.26轮）：
+    /// 严格只包含本轮用户选中的需要处理的文件（<see cref="SelectedFiles"/>）的条目，
+    /// 绝不混入未勾选或无需 AI（纯继承）的文件，彻底避免历史遗留标记污染待审核列表。
+    /// </summary>
+    IReadOnlyList<DiffEntry> SelectedReviewEntries,
+    /// <summary>
     /// 本轮处理、且**真正需要 AI** 的逻辑文件（与 GUI「需要处理的文件」列表同口径）。
     /// 注意：不含"无需 AI（可继承旧中文）"的文件 —— 那些文件不需要用户勾选。
     /// </summary>
@@ -264,7 +270,23 @@ public static class TaskSelection
             .Where(entry => selectedVisibleFiles.Contains(entry.Key.RelativeFilePath))
             .ToList();
 
-        // ② 输出条目 = 范围 ∩ （勾选的待翻译文件 ∪ 本就无需 AI 的文件）
+        // ② 本轮处理、且真正需要 AI 的逻辑文件（与 GUI「需要处理的文件」同口径）
+        var selectedFiles = visible
+            .Where(summary => summary.RequiresAi && selection.IsSelected(summary.LogicalFile))
+            .Select(summary => summary.LogicalFile)
+            .OrderBy(file => file, StringComparer.Ordinal)
+            .ToList();
+        var selectedFileSet = selectedFiles.ToHashSet(StringComparer.Ordinal);
+
+        // ③ 待审核条目（Review Entries，第9.0C.26轮）：
+        // 严格与选中的文件集合（SelectedFiles）对齐，
+        // 包含本轮所选需要 AI 处理的文件的全部 output 条目（新译文 + 文件内继承），
+        // 绝不混入未勾选或无需 AI（纯继承）的无关文件，彻底杜绝历史标记污染审核列表！
+        var selectedReview = plan.OutputEntries
+            .Where(entry => selectedFileSet.Contains(entry.Key.RelativeFilePath))
+            .ToList();
+
+        // ④ 输出条目 = 范围 ∩ （勾选的待翻译文件 ∪ 本就无需 AI 的文件）
         var selectedOutput = plan.OutputEntries
             .Where(entry => visibleFiles.Contains(entry.Key.RelativeFilePath))
             .Where(entry => selectedVisibleFiles.Contains(entry.Key.RelativeFilePath)
@@ -278,12 +300,9 @@ public static class TaskSelection
         return new TaskSelectionResult(
             SelectedEntries: selectedEntries,
             SelectedOutputEntries: selectedOutput,
+            SelectedReviewEntries: selectedReview,
             // 第9.0C.6轮：与 GUI「需要处理的文件」同口径 —— 只算需要 AI 的文件
-            SelectedFiles: visible
-                .Where(summary => summary.RequiresAi && selection.IsSelected(summary.LogicalFile))
-                .Select(summary => summary.LogicalFile)
-                .OrderBy(file => file, StringComparer.Ordinal)
-                .ToList(),
+            SelectedFiles: selectedFiles,
             SelectedOutputFileCount: selectedOutput
                 .Select(entry => entry.Key.RelativeFilePath)
                 .Distinct(StringComparer.Ordinal)

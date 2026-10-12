@@ -14,9 +14,15 @@ public sealed class TerminologyRequirement
     /// <summary>是否锁定（locked=true）。校验只针对锁定术语。</summary>
     public bool Locked { get; init; }
 
+    /// <summary>术语含义说明（如“状态效果名”“但丁的称号”）</summary>
+    public string? Meaning { get; init; }
+
     /// <summary>该术语是否本来就要求保留英文（如 E.G.O）</summary>
     public bool PreservedAsEnglish =>
         string.Equals(Source, Target, StringComparison.OrdinalIgnoreCase);
 
-    public override string ToString() => $"{Source} → {Target}{(Locked ? "(locked)" : string.Empty)}";
+    public override string ToString() =>
+        string.IsNullOrWhiteSpace(Meaning)
+            ? $"{Source} → {Target}{(Locked ? "(locked)" : string.Empty)}"
+            : $"{Source} → {Target}（含义：{Meaning}）{(Locked ? "(locked)" : string.Empty)}";
 }

@@ -10,12 +10,29 @@ namespace LimbusTranslator.Wpf.ViewModels;
 public sealed class CategoryStat : INotifyPropertyChanged
 {
     private bool _isSelected = true;
+    private int _selectedFileCount;
 
     /// <summary>分类</summary>
     public required TextCategory Category { get; init; }
 
     /// <summary>分类显示名</summary>
     public required string DisplayName { get; init; }
+
+    /// <summary>该分类当前勾选的文件数（第9.0C.25轮：与下方文件列表即时联动）。</summary>
+    public int SelectedFileCount
+    {
+        get => _selectedFileCount;
+        set
+        {
+            if (_selectedFileCount == value)
+            {
+                return;
+            }
+
+            _selectedFileCount = value;
+            OnPropertyChanged();
+        }
+    }
 
     /// <summary>该分类总文件数</summary>
     public int TotalFileCount { get; set; }
