@@ -1,4 +1,6 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
+using LimbusTranslator.Core.CharacterStyle;
 
 namespace LimbusTranslator.Infrastructure.CharacterStyle;
 
@@ -86,6 +88,8 @@ public sealed class CharacterStyleService
 
     /// <summary>
     /// 动态选择：从给定的角色集合中提取命中的风格。
+    /// 支持传入中文名（如 "格里高尔"）、韩文 model（如 "그레고르" / "료슈2"）、或英文名（如 "Gregor"）。
+    /// 生成的 Key 与发给模型的 Speaker 保持一致（优先标准中文名）。
     /// </summary>
     public IReadOnlyList<KeyValuePair<string, string>> SelectStyles(IEnumerable<string?> speakers)
     {
@@ -96,13 +100,58 @@ public sealed class CharacterStyleService
             {
                 continue;
             }
-            // teller 可能是中文名，尝试匹配韩文 model 或英文名
-            if (_styles.TryGetValue(speaker, out var style))
+
+            if (TryFindStyle(speaker, out var style))
             {
-                result[speaker] = style;
+                var displayKey = CharacterAliasHelper.TryGetChineseName(speaker, out var zh)
+                    ? zh
+                    : speaker;
+
+                result[displayKey] = style;
             }
         }
         return result.ToList();
+    }
+
+    /// <summary>
+    /// 尝试根据各种角色名别名在已加载的风格配置中检索对应风格。
+    /// </summary>
+    public bool TryFindStyle(string speaker, [NotNullWhen(true)] out string? style)
+    {
+        style = null;
+        if (string.IsNullOrWhiteSpace(speaker))
+        {
+            return false;
+        }
+
+        // 1. 直接尝试匹配
+        if (_styles.TryGetValue(speaker, out style))
+        {
+            return true;
+        }
+
+        // 2. 尝试英文 key（character_styles.json 的 key）
+        if (CharacterAliasHelper.TryGetStyleKey(speaker, out var styleKey)
+            && _styles.TryGetValue(styleKey, out style))
+        {
+            return true;
+        }
+
+        // 3. 尝试中文名匹配
+        if (CharacterAliasHelper.TryGetChineseName(speaker, out var zhName)
+            && _styles.TryGetValue(zhName, out style))
+        {
+            return true;
+        }
+
+        // 4. 尝试韩文名匹配
+        if (CharacterAliasHelper.TryGetKoreanName(speaker, out var koName)
+            && _styles.TryGetValue(koName, out style))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -148,7 +197,18 @@ public sealed class CharacterStyleService
     /// </summary>
     public void Update(string character, string style)
     {
-        _styles[character] = style;
+        if (CharacterAliasHelper.TryGetStyleKey(character, out var key) && _styles.ContainsKey(key))
+        {
+            _styles[key] = style;
+        }
+        else if (CharacterAliasHelper.TryGetChineseName(character, out var zh) && _styles.ContainsKey(zh))
+        {
+            _styles[zh] = style;
+        }
+        else
+        {
+            _styles[character] = style;
+        }
     }
 
     /// <summary>

@@ -47,7 +47,7 @@ public class PipelineIntegrationTests
         Assert.NotNull(current.Context);
         Assert.Equal("Line zero unchanged.", current.Context!.Previous!.SourceText);
         Assert.Equal("Line two unchanged.", current.Context.Next!.SourceText);
-        Assert.Equal("Gregor", current.Speaker);                        // 当前句 speaker（来自 teller，已进入请求）
+        Assert.Equal("格里高尔", current.Speaker);                      // 当前句 speaker（来自 teller/model，已转为标准中文名进入请求）
         Assert.Null(current.Context.Previous.Speaker);                  // 上一句是无 speaker 的旁白
 
         // ---- Placeholder 保护：占位符在最终译文中完整保留 ----

@@ -1,3 +1,4 @@
+using LimbusTranslator.Core.CharacterStyle;
 using LimbusTranslator.Core.Models;
 
 namespace LimbusTranslator.Core.Diff;
@@ -32,6 +33,7 @@ public sealed class DiffEngine
         var oldEnglishMap = BuildMap(oldEnglish);
         var oldChineseMap = BuildMap(oldChinese);
         var newEnglishMap = BuildMap(newEnglish);
+        var oldChineseSpeakerByRecord = BuildOldChineseSpeakerByRecord(oldChinese);
 
         var entries = new List<DiffEntry>();
         var newKeys = new HashSet<string>(newEnglishMap.Keys);
@@ -45,6 +47,9 @@ public sealed class DiffEngine
             var oldEnExists = oldEnglishMap.TryGetValue(key, out var oldEnUnit);
             var oldZhExists = oldChineseMap.TryGetValue(key, out var oldZhUnit);
 
+            var resolvedSpeaker = ResolveSpeaker(newUnit, oldChineseMap, oldChineseSpeakerByRecord);
+            newUnit.Speaker = resolvedSpeaker;
+
             // 情况1：新增 ID（旧版英文中不存在）
             if (!oldEnExists)
             {
@@ -56,7 +61,7 @@ public sealed class DiffEngine
                     OldTranslation = null,
                     DiffKind = DiffKind.Added,
                     Action = TranslationAction.TranslateNew,
-                    Speaker = newUnit.Speaker,
+                    Speaker = resolvedSpeaker,
                     Order = newUnit.Order,
                 });
                 continue;
@@ -74,7 +79,7 @@ public sealed class DiffEngine
                     OldTranslation = oldZhExists ? oldZhUnit!.SourceText : null,
                     DiffKind = DiffKind.Modified,
                     Action = TranslationAction.TranslateModified,
-                    Speaker = newUnit.Speaker,
+                    Speaker = resolvedSpeaker,
                     Order = newUnit.Order,
                 });
                 continue;
@@ -91,7 +96,7 @@ public sealed class DiffEngine
                     OldTranslation = null,
                     DiffKind = DiffKind.Unchanged,
                     Action = TranslationAction.TranslateMissing,
-                    Speaker = newUnit.Speaker,
+                    Speaker = resolvedSpeaker,
                     Order = newUnit.Order,
                 });
                 continue;
@@ -106,7 +111,7 @@ public sealed class DiffEngine
                 OldTranslation = oldZhUnit.SourceText,
                 DiffKind = DiffKind.Unchanged,
                 Action = TranslationAction.Inherit,
-                Speaker = newUnit.Speaker,
+                Speaker = resolvedSpeaker,
                 Order = newUnit.Order,
                 Translation = oldZhUnit.SourceText,
                 // 第1轮：继承来源标记（Provenance），便于端到端追踪译文来源
@@ -159,5 +164,76 @@ public sealed class DiffEngine
             map[unit.Key.ToString()] = unit;
         }
         return map;
+    }
+
+    /// <summary>
+    /// 构建旧中文 (RelativeFilePath, RecordId) -> Speaker/Teller 映射。
+    /// 优先使用 .teller 字段的实际译文，其次使用非空的 unit.Speaker。
+    /// </summary>
+    private static Dictionary<(string RelativeFilePath, string RecordId), string> BuildOldChineseSpeakerByRecord(
+        IReadOnlyList<TranslationUnit> oldChinese)
+    {
+        var map = new Dictionary<(string RelativeFilePath, string RecordId), string>();
+        foreach (var unit in oldChinese)
+        {
+            if (string.IsNullOrEmpty(unit.Key.RelativeFilePath) || string.IsNullOrEmpty(unit.Key.RecordId))
+            {
+                continue;
+            }
+
+            var recordKey = (unit.Key.RelativeFilePath, unit.Key.RecordId);
+
+            if (unit.Key.FieldPath.EndsWith(".teller", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(unit.SourceText))
+            {
+                map[recordKey] = unit.SourceText;
+            }
+            else if (!string.IsNullOrWhiteSpace(unit.Speaker) && !map.ContainsKey(recordKey))
+            {
+                map[recordKey] = unit.Speaker;
+            }
+        }
+        return map;
+    }
+
+    /// <summary>
+    /// 解析条目说话人：
+    /// 1. 若 newUnit.Speaker 是罪人别名（韩文 model ID 或英文名），转换为中文名（如 그레고르 → 格里高尔）。
+    /// 2. 若不是罪人别名，但 old_zh 中同文件同 recordId（或同 UnitKey）具有 teller / speaker（且非空），自动继承 old_zh 的中文 speaker（例如 유리 / Yuri → 尤莉）。
+    /// 3. 其余保留原 newUnit.Speaker。
+    /// </summary>
+    private static string? ResolveSpeaker(
+        TranslationUnit newUnit,
+        Dictionary<string, TranslationUnit> oldChineseMap,
+        Dictionary<(string RelativeFilePath, string RecordId), string> oldChineseSpeakerByRecord)
+    {
+        // 1. 若 newUnit.Speaker 是罪人别名（韩文 model ID 或英文名），转换为中文名
+        if (CharacterAliasHelper.TryGetChineseName(newUnit.Speaker, out var sinnerChineseName))
+        {
+            return sinnerChineseName;
+        }
+
+        // 2. 若不是罪人别名，但 old_zh 中同文件同 recordId（或同 UnitKey）具有 teller / speaker（且非空），自动继承 old_zh 的中文 speaker
+        string? candidateSpeaker = null;
+        if (oldChineseMap.TryGetValue(newUnit.Key.ToString(), out var oldZhUnit)
+            && !string.IsNullOrWhiteSpace(oldZhUnit.Speaker))
+        {
+            candidateSpeaker = oldZhUnit.Speaker;
+        }
+        else if (oldChineseSpeakerByRecord.TryGetValue((newUnit.Key.RelativeFilePath, newUnit.Key.RecordId), out var recordSpeaker)
+                 && !string.IsNullOrWhiteSpace(recordSpeaker))
+        {
+            candidateSpeaker = recordSpeaker;
+        }
+
+        if (!string.IsNullOrWhiteSpace(candidateSpeaker))
+        {
+            return CharacterAliasHelper.TryGetChineseName(candidateSpeaker, out var zh)
+                ? zh
+                : candidateSpeaker;
+        }
+
+        // 3. 兜底返回 newUnit.Speaker
+        return newUnit.Speaker;
     }
 }
