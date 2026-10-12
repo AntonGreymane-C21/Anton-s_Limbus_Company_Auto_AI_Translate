@@ -1523,6 +1523,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         }
 
         RefreshReleaseGate();
+        // 简易模式：输出与清单已写好（可能在后台线程；内部会切回 UI 线程刷新）
+        NoteSimpleOutputGenerated(outputResult.WrittenFileCount, outputResult.RequestedFileCount);
 
         Log($"[调试] {operationName}核验：预期文件 {outputResult.RequestedFileCount}，已写入 {outputResult.WrittenFileCount}，预期条目 {outputResult.RequestedEntryCount}，已校验 {outputResult.VerifiedEntryCount}，问题 {outputResult.Issues.Count}");
         Log($"[调试] 本轮输出清单已保存: {OutputManifestService.GetManifestPath(outputRoot)}，完整={manifest.IsComplete}");

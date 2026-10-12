@@ -180,6 +180,10 @@ public sealed partial class MainViewModel
 
             var newErrors = changed.Count(ReviewFilter.HasHardSafetyError);
             var saved = SaveReviewedEntries(changed);
+            if (changed.Count > 0)
+            {
+                NoteSimpleReviewChanged();   // 译文已改动 ⇒ 需要重新生成输出
+            }
 
             var glossaryNote = ReviewReplaceWriteGlossary
                 ? await WriteGlossaryForReplaceAsync()

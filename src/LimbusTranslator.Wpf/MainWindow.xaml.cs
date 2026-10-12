@@ -16,6 +16,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        // 简易模式：读取上次的界面模式（首次启动 = 简易模式），必须在绑定前完成，避免启动时闪一下专家模式
+        _viewModel.InitializeSimpleMode();
         DataContext = _viewModel;
         // 第8.86轮：批量审核的确认框由 View 注入（ViewModel 只做业务判断）
         _viewModel.ConfirmAction = message =>
@@ -424,13 +426,71 @@ public partial class MainWindow : Window
 
     /// <summary>显示发布门禁结论与可定位的问题样本。</summary>
     private void ShowGateReasons_Click(object sender, RoutedEventArgs e)
+        => ShowGateReasonsFromSimpleMode();
+
+    // ---------------- 简易模式（Views/SimpleModeView）共用的窗口级操作 ----------------
+
+    /// <summary>专家模式顶栏「切换到简易模式」。</summary>
+    private void SwitchToSimpleMode_Click(object sender, RoutedEventArgs e)
+        => _viewModel.IsSimpleMode = true;
+
+    /// <summary>简易模式「⚙ 设置」：与专家模式同一个设置窗口，关闭后刷新引擎状态。</summary>
+    internal void OpenSettingsFromSimpleMode()
     {
-        System.Windows.MessageBox.Show(
+        OpenSettings_Click(this, new RoutedEventArgs());
+        try
+        {
+            _viewModel.RefreshEnvironmentStatus();
+        }
+        catch (Exception ex)
+        {
+            _viewModel.FailGui("刷新翻译设置状态失败：请重启程序后再试。", ex);
+        }
+    }
+
+    /// <summary>发布检查详细原因（简易 / 专家模式共用）。</summary>
+    internal void ShowGateReasonsFromSimpleMode()
+    {
+        MessageBox.Show(
+            this,
             _viewModel.GateReasonText,
             "发布门禁原因",
             MessageBoxButton.OK,
-            System.Windows.MessageBoxImage.Information);
+            MessageBoxImage.Information);
     }
+
+    /// <summary>
+    /// 简易模式「部署到游戏」：确认框与专家模式同源（目标目录 / 文件数 / 备份 / 回滚 / 门禁），
+    /// 目标为当前使用的游戏汉化目录；安全链（清单 → 门禁 → 备份 → 原子替换 → 回滚）完全相同。
+    /// </summary>
+    internal async Task DeployFromSimpleModeAsync()
+    {
+        try
+        {
+            var target = _viewModel.SimpleDeployTarget;
+            var confirm = MessageBox.Show(
+                this,
+                _viewModel.BuildDeployConfirmationText(string.IsNullOrWhiteSpace(target) ? null : target, "游戏目录"),
+                "部署到游戏确认",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (confirm != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            ShowDeployResult(await _viewModel.SimpleDeployAsync());
+        }
+        catch (Exception ex)
+        {
+            _viewModel.FailGui("部署过程中出现未预期的错误，游戏目录可能未完整更新，请查看运行日志。", ex);
+        }
+    }
+
+    /// <summary>简易模式进度卡片上的「取消」。</summary>
+    internal void CancelFromSimpleMode()
+        => CancelOperation_Click(this, new RoutedEventArgs());
 
     private async void DeployToGame_Click(object sender, RoutedEventArgs e)
     {
@@ -597,6 +657,28 @@ public partial class MainWindow : Window
     {
         var ctrl = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0;
         var alt = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Alt) != 0;
+
+        if (_viewModel.IsSimpleMode)
+        {
+            // 简易模式：只在「确认译文」卡片显示时响应 Ctrl+S / Ctrl+Enter；不提供 Alt 导航
+            if (_viewModel.SimpleReviewVisibility != Visibility.Visible)
+            {
+                return;
+            }
+
+            if (ctrl && e.Key == System.Windows.Input.Key.S)
+            {
+                _viewModel.SimpleSaveReview();
+                e.Handled = true;
+            }
+            else if (ctrl && (e.Key == System.Windows.Input.Key.Enter || e.Key == System.Windows.Input.Key.Return))
+            {
+                _viewModel.SimpleApproveAndNext();
+                e.Handled = true;
+            }
+
+            return;
+        }
 
         if (ctrl && e.Key == System.Windows.Input.Key.S)
         {

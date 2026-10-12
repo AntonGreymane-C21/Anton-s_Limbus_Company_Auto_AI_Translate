@@ -4,7 +4,7 @@
 
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
-![Tests](https://img.shields.io/badge/tests-1055%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-1148%20passed-brightgreen)
 ![Warnings](https://img.shields.io/badge/build%20warnings-0-success)
 ![Status](https://img.shields.io/badge/status-work%20in%20progress-orange)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
@@ -124,6 +124,32 @@ dotnet run --project .\src\LimbusTranslator.Wpf
 
 ## 六、使用流程（图形界面）
 
+图形界面有两种模式，可随时在右上角切换：
+
+| 模式 | 适合谁 | 外观 |
+|---|---|---|
+| **简易模式**（首次启动默认） | 只想把游戏汉化更新到最新的玩家 | 边狱巴士风格暗色主题，一次只显示当前这一步 |
+| **专家模式**（原工作台） | 需要按分类 / 文件勾选、批量审核、维护术语、部署到指定文件夹的用户 | 保持原有界面与全部功能 |
+
+程序会记住你上次使用的模式（保存在本机 `data/ui_prefs.json`，不纳入版本库；文件缺失或损坏时回到简易模式）。两种模式共用同一套数据与安全机制（配置校验、发布门禁、部署前备份、失败回滚），中途切换不会丢失进度。
+
+### 6.1 简易模式：四步完成
+
+步骤条显示 **① 定位游戏 → ② 分析 → ③ 翻译 → ④ 部署**，当前步骤以大卡片呈现，只放这一步需要的按钮：
+
+1. **定位游戏**：点「自动查找」在 Steam 库中搜索，找不到时「手动选择文件夹…」（选包含 `LimbusCompany.exe` 的目录）。需要已安装过一次中文汉化（`LLC_zh-CN`）。
+2. **分析**：点「开始分析」，只读对比游戏文本与现有汉化，得出需要翻译的条数。没有新文本时显示「已是最新」。
+3. **翻译**：显示「需要翻译 N 条」，点「开始翻译」即翻译**全部**新增 / 改动文本（翻译设置未填好时会提示「打开设置」）。完成后若有 AI 不确定的条目，进入**简化审核卡片**：
+   - 只列出有问题的条目，每条显示原文、可直接修改的译文与一句话问题说明；
+   - 只有两个操作：「**通过并下一条**」（`Ctrl+Enter`）与「**保存**」（`Ctrl+S`）；
+   - 也可以「稍后再审，先去部署」，未确认的条目会在发布检查中提示；
+   - 审核中保存过修改时，部署前需先点「应用修改」重新生成汉化文件。
+4. **部署**：显示发布检查结论（通过 / 需要确认 / 有必须修正的问题），确认后点「部署到游戏」，部署前自动备份游戏里原来的汉化文件，失败自动回滚。
+
+运行日志默认折叠在卡片下方；分类 / 文件勾选、批量替换、术语管理、部署到其他文件夹等高级功能请切换到专家模式。
+
+### 6.2 专家模式（原工作台）
+
 1. **指定目录**
    - 新版英文：当前游戏 `LimbusCompany_Data\Assets\Resources_moved\Localize\en`
    - 旧英文：上一版本的 `Localize\en`（用于计算英文差异并提供结构参考）
@@ -172,6 +198,7 @@ dotnet run --project .\src\LimbusTranslator.Wpf
 | `data/cache/translation_memory.db` | 翻译记忆 + 请求缓存（同一 SQLite） | ❌ |
 | `data/cache/source_snapshots/{ko,en,ja}/` | 三语原文快照（Canonical Diff 基线，事务式更新） | ❌ |
 | `data/output/` | 生成的汉化 JSON 与输出清单 | ❌ |
+| `data/ui_prefs.json` | 界面模式偏好（简易 / 专家，记住上次选择） | ❌ |
 | `logs/` | 运行日志、Diff 日志、JSONL Trace | ❌ |
 | `backups/` | 本地人工备份 | ❌ |
 
@@ -227,10 +254,10 @@ Coordinator / TranslationAgent
 
 ```powershell
 dotnet build .\LimbusTranslator.slnx --no-restore            # 0 警告 / 0 错误
-dotnet test  .\LimbusTranslator.slnx --no-build --no-restore # 1055 通过 / 0 失败 / 0 跳过
+dotnet test  .\LimbusTranslator.slnx --no-build --no-restore # 1148 通过 / 0 失败 / 0 跳过
 ```
 
-测试规模：Core 1039 项 + 集成 16 项。覆盖重点：
+测试规模：Core 1132 项 + 集成 16 项。覆盖重点：
 
 - **Agent 级端到端**：真实 Diff → 生产计划 → Coordinator → TranslationAgent → 翻译记忆 / 请求缓存（Provider 使用假实现，真实网络请求数为 0）；
 - **四模式语义**：英文模式不得下发韩文；韩文模式必须下发韩文权威原文；仅参考文本变化不得触发重译；
@@ -251,9 +278,9 @@ LimbusTranslator.slnx
 │  ├─ LimbusTranslator.Infrastructure/   实现层：解析、Diff、三语捕获、翻译记忆、请求缓存、DeepSeek、
 │  │                                     校验、合并输出、发布门禁、部署、Trace、后台分析服务、展示层文案
 │  ├─ LimbusTranslator.Cli/              命令行入口（翻译、耗时诊断、结构审计、演示工作区、受控冒烟）
-│  └─ LimbusTranslator.Wpf/              图形界面（主窗口、配置窗口、ViewModel）
+│  └─ LimbusTranslator.Wpf/              图形界面（主窗口、配置窗口、ViewModel；Views/ 简易模式、Themes/ 暗色主题）
 ├─ tests/
-│  ├─ LimbusTranslator.Core.Tests/       1039 项：单元测试与 Agent 级端到端测试
+│  ├─ LimbusTranslator.Core.Tests/       1132 项：单元测试与 Agent 级端到端测试
 │  └─ LimbusTranslator.IntegrationTests/ 16 项：集成测试
 ├─ config/                               配置与术语库
 ├─ docs/                                 各轮实施与验收报告、架构设计文档
@@ -281,7 +308,10 @@ LimbusTranslator.slnx
 Paratranz 属于可选功能，失败仅影响远程术语同步，不影响本地术语表、翻译、审核与输出。
 
 **Q：能否只处理部分内容？**
-可以。在「任务范围」页按分类勾选需要处理的范围（StoryData、技能、物品等）。
+可以，但需要在**专家模式**中操作：在「任务范围」页按分类勾选需要处理的范围（StoryData、技能、物品等）。简易模式总是翻译全部需要更新的文本。
+
+**Q：简易模式和专家模式有什么区别？怎么切换？**
+简易模式把流程收敛为「定位游戏 → 分析 → 翻译 → 部署」四步，审核只看有问题的条目；专家模式是原工作台，保留全部功能。简易模式右上角点「专家」、专家模式右上角点「切换到简易模式」即可切换，程序会记住上次的选择。两种模式的翻译、校验与部署逻辑完全相同。
 
 **Q：工具会修改游戏文件吗？**
 除用户在确认框中明确同意的部署操作外，其余流程对游戏目录只读。
@@ -348,6 +378,14 @@ Paratranz 属于可选功能，失败仅影响远程术语同步，不影响本�
 ---
 
 ## 十七、版本记录
+
+### 2026-10-12（简易模式）
+
+- **新增简易模式（首次启动默认）**：界面收敛为「定位游戏 → 分析 → 翻译 → 部署」四步，一次只显示当前步骤，移除分类 / 文件勾选、筛选等非必要内容；原工作台保留为「专家模式」，外观与功能不变。
+- **边狱巴士风格暗色主题**：深色底、金色当前步骤、暗红主按钮，仅作用于简易模式。
+- **简化审核卡片**：只显示有问题的条目（原文 + 可编辑译文 + 一句话问题），操作只有「通过并下一条」（`Ctrl+Enter`）与「保存」（`Ctrl+S`），可稍后再审先部署。
+- **记住上次模式**：保存在本机 `data/ui_prefs.json`（不纳入版本库）。
+- 两种模式共用同一套业务逻辑与安全机制（配置校验、发布门禁、备份与回滚）。
 
 ### 2026-09-17（大更新）
 
